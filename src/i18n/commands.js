@@ -1,0 +1,245 @@
+export const COMMANDS = {
+  kick: {
+    category: "admin",
+    adminOnly: true,
+    aliases: ["kick", "k", "expulsar", "exp", "banir", "ban"],
+    primary: { pt: "expulsar", en: "kick" },
+    abbr: ["k", "exp"],
+    desc: { pt: "Remove um membro", en: "Remove a member" },
+    usage: { pt: ".expulsar", en: ".kick" },
+  },
+  mute: {
+    category: "admin",
+    adminOnly: true,
+    aliases: ["mute", "m", "mutar", "silenciar", "fechar"],
+    primary: { pt: "mutar", en: "mute" },
+    abbr: ["m"],
+    desc: { pt: "Silencia o grupo", en: "Silence the group" },
+    usage: { pt: ".mutar", en: ".mute" },
+  },
+  unmute: {
+    category: "admin",
+    adminOnly: true,
+    aliases: ["unmute", "um", "desmutar", "abrir"],
+    primary: { pt: "desmutar", en: "unmute" },
+    abbr: ["um"],
+    desc: { pt: "Abre o grupo", en: "Open the group" },
+    usage: { pt: ".desmutar", en: ".unmute" },
+  },
+  promote: {
+    category: "admin",
+    adminOnly: true,
+    aliases: ["promote", "pr", "promover", "promo"],
+    primary: { pt: "promover", en: "promote" },
+    abbr: ["pr", "promo"],
+    desc: { pt: "Promove a admin", en: "Promote to admin" },
+    usage: { pt: ".promover", en: ".promote" },
+  },
+  demote: {
+    category: "admin",
+    adminOnly: true,
+    aliases: ["demote", "dm", "rebaixar", "rebaixa"],
+    primary: { pt: "rebaixar", en: "demote" },
+    abbr: ["dm"],
+    desc: { pt: "Rebaixa um admin", en: "Demote an admin" },
+    usage: { pt: ".rebaixar", en: ".demote" },
+  },
+  warn: {
+    category: "admin",
+    adminOnly: true,
+    aliases: ["warn", "w", "advertir", "adv"],
+    primary: { pt: "advertir", en: "warn" },
+    abbr: ["w", "adv"],
+    desc: { pt: "Adverte (3 = kick)", en: "Warn (3 = kick)" },
+    usage: { pt: ".advertir", en: ".warn" },
+  },
+  unwarn: {
+    category: "admin",
+    adminOnly: true,
+    aliases: ["unwarn", "uw", "desadvertir"],
+    primary: { pt: "desadvertir", en: "unwarn" },
+    abbr: ["uw"],
+    desc: { pt: "Remove uma advertência", en: "Remove a warning" },
+    usage: { pt: ".desadvertir", en: ".unwarn" },
+  },
+  warns: {
+    category: "admin",
+    adminOnly: true,
+    aliases: ["warns", "ws", "advertencias", "warnings"],
+    primary: { pt: "advertencias", en: "warns" },
+    abbr: ["ws"],
+    desc: { pt: "Lista advertências do grupo", en: "List group warnings" },
+    usage: { pt: ".advertencias", en: ".warns" },
+  },
+  antilink: {
+    category: "admin",
+    adminOnly: true,
+    aliases: ["antilink", "al"],
+    primary: { pt: "antilink", en: "antilink" },
+    abbr: ["al"],
+    desc: { pt: "Bloqueia links", en: "Block links" },
+    usage: { pt: ".antilink on/off", en: ".antilink on/off" },
+  },
+  antispam: {
+    category: "admin",
+    adminOnly: true,
+    aliases: ["antispam", "as"],
+    primary: { pt: "antispam", en: "antispam" },
+    abbr: ["as"],
+    desc: { pt: "Anti-flood", en: "Anti-flood" },
+    usage: { pt: ".antispam on/off", en: ".antispam on/off" },
+  },
+  antimedia: {
+    category: "admin",
+    adminOnly: true,
+    aliases: ["antimedia", "am", "viewonce"],
+    primary: { pt: "antimedia", en: "antimedia" },
+    abbr: ["am"],
+    desc: { pt: "Apaga mídia; fotos view-once", en: "Delete media; photos view-once" },
+    usage: { pt: ".antimedia on/off", en: ".antimedia on/off" },
+  },
+  welcome: {
+    category: "admin",
+    adminOnly: true,
+    aliases: ["welcome", "wel", "boasvindas", "bv"],
+    primary: { pt: "boasvindas", en: "welcome" },
+    abbr: ["wel", "bv"],
+    desc: { pt: "Boas-vindas", en: "Welcome toggle" },
+    usage: { pt: ".boasvindas on/off", en: ".welcome on/off" },
+  },
+  setwelcome: {
+    category: "admin",
+    adminOnly: true,
+    aliases: ["setwelcome", "sw", "setbv"],
+    primary: { pt: "setbv", en: "setwelcome" },
+    abbr: ["sw", "setbv"],
+    desc: { pt: "Texto de boas-vindas", en: "Welcome text" },
+    usage: { pt: ".setbv {user} {group}", en: ".setwelcome {user} {group}" },
+  },
+  logs: {
+    category: "admin",
+    adminOnly: true,
+    aliases: ["logs", "lg", "registro"],
+    primary: { pt: "logs", en: "logs" },
+    abbr: ["lg"],
+    desc: { pt: "Logs", en: "Logs" },
+    usage: { pt: ".logs", en: ".logs" },
+  },
+  lang: {
+    category: "admin",
+    adminOnly: true,
+    aliases: ["lang", "idioma"],
+    primary: { pt: "idioma", en: "lang" },
+    abbr: ["lang"],
+    desc: { pt: "Idioma pt/en", en: "Language pt/en" },
+    usage: { pt: ".idioma pt|en", en: ".lang pt|en" },
+  },
+  info: {
+    category: "util",
+    aliases: ["info", "i", "grupo", "group"],
+    primary: { pt: "info", en: "info" },
+    abbr: ["i"],
+    desc: { pt: "Informações do grupo", en: "Group information" },
+    usage: { pt: ".info", en: ".info" },
+  },
+  botinfo: {
+    category: "util",
+    aliases: ["botinfo", "bi", "sobre", "about", "nyxius", "nyxus"],
+    primary: { pt: "sobre", en: "botinfo" },
+    abbr: ["bi", "sobre"],
+    desc: { pt: "Informações do Nyxius", en: "Nyxius bot information" },
+    usage: { pt: ".sobre", en: ".botinfo" },
+  },
+  help: {
+    category: "util",
+    aliases: ["help", "h", "ajuda", "menu"],
+    primary: { pt: "ajuda", en: "help" },
+    abbr: ["h", "menu"],
+    desc: { pt: "Mostra este menu", en: "Show this menu" },
+    usage: { pt: ".ajuda", en: ".help" },
+  },
+  trivia: {
+    category: "jogos",
+    aliases: ["trivia", "tr", "quiz"],
+    primary: { pt: "trivia", en: "trivia" },
+    abbr: ["tr", "quiz"],
+    desc: { pt: "Pergunta de trivia; responde A-D", en: "Trivia question; reply A-D" },
+    usage: { pt: ".trivia", en: ".trivia" },
+  },
+  forca: {
+    category: "jogos",
+    aliases: ["forca", "f", "hangman", "hg"],
+    primary: { pt: "forca", en: "hangman" },
+    abbr: ["f", "hg"],
+    desc: { pt: "Jogo da forca (com dica)", en: "Hangman (with a hint)" },
+    usage: { pt: ".forca", en: ".hangman" },
+  },
+  ttt: {
+    category: "jogos",
+    aliases: ["ttt", "velha", "jv", "tictactoe"],
+    primary: { pt: "velha", en: "ttt" },
+    abbr: ["ttt", "jv"],
+    desc: { pt: "Jogo da velha; responde 1-9", en: "Tic-tac-toe; reply 1-9" },
+    usage: { pt: ".velha @usuario", en: ".ttt @user" },
+  },
+  play: {
+    category: "midia",
+    aliases: ["play", "pl", "tocar", "musica", "yt"],
+    primary: { pt: "tocar", en: "play" },
+    abbr: ["pl", "yt"],
+    desc: { pt: "YouTube 1-5", en: "YouTube 1-5" },
+    usage: { pt: ".tocar <nome>", en: ".play <name>" },
+  },
+  pin: {
+    category: "midia",
+    aliases: ["pin", "pn", "pinterest"],
+    primary: { pt: "pin", en: "pin" },
+    abbr: ["pn"],
+    desc: { pt: "Pin SFW do Pinterest", en: "SFW Pinterest pin" },
+    usage: { pt: ".pin <busca>", en: ".pin <query>" },
+  },
+  explain: {
+    category: "util",
+    aliases: ["explain", "ex", "explicar", "expl"],
+    primary: { pt: "explicar", en: "explain" },
+    abbr: ["ex", "expl"],
+    desc: { pt: "Explica um tema", en: "Explain a topic" },
+    usage: { pt: ".explicar <tema>", en: ".explain <topic>" },
+  },
+  afk: {
+    category: "util",
+    aliases: ["afk", "ausente"],
+    primary: { pt: "afk", en: "afk" },
+    abbr: ["afk"],
+    desc: { pt: "Ausente, com motivo", en: "Away, with a reason" },
+    usage: { pt: ".afk <motivo>", en: ".afk <reason>" },
+  },
+  del: {
+    category: "util",
+    aliases: ["del", "delete", "apagar", "rm"],
+    primary: { pt: "apagar", en: "del" },
+    abbr: ["del", "rm"],
+    desc: { pt: "Apaga a mensagem respondida", en: "Delete the replied message" },
+    usage: { pt: ".apagar", en: ".del" },
+  },
+};
+
+const ALIAS_TO_ID = new Map();
+for (const [id, meta] of Object.entries(COMMANDS)) {
+  for (const alias of meta.aliases) {
+    ALIAS_TO_ID.set(alias.toLowerCase(), id);
+  }
+}
+
+export function resolveCommand(name) {
+  if (!name) return null;
+  return ALIAS_TO_ID.get(name.toLowerCase()) || null;
+}
+
+export function formatCommandHelp(id, lang) {
+  const meta = COMMANDS[id];
+  if (!meta) return "";
+  const usage = meta.usage[lang] || meta.usage.pt;
+  const desc = meta.desc[lang] || meta.desc.pt;
+  return `*${usage}* — ${desc}`;
+}

@@ -1,7 +1,7 @@
 {
-  "name": "leena_assistant",
+  "name": "Nyxius",
   "version": "0.1.0",
-  "description": "adminBot",
+  "description": "Nyxius — futuristic WhatsApp group operations bot",
   "main": "index.js",
   "type": "module",
   "scripts": {
@@ -30,6 +30,7 @@
     "express": "^5.2.1",
     "groq-sdk": "^1.1.2",
     "pg": "^8.20.0",
-    "qrcode": "^1.5.4"
+    "qrcode": "^1.5.4",
+    "sharp": "^0.34.5"
   }
 }

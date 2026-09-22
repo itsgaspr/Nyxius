@@ -9,7 +9,7 @@ const app = express();
 const PORT = process.env.PORT || 3000;
 
 app.get('/ping', (req, res) => {
-    res.send('Admin WhatsApp Bot is running!');
+    res.send('Nyxius is online.');
 });
 
 app.listen(PORT, () => {
@@ -18,7 +18,7 @@ app.listen(PORT, () => {
 
 async function main() {
     try {
-        console.log('🚀 Starting WhatsApp bot...');
+        console.log('🚀 Starting Nyxius...');
         startHeartbeat();
         await startBot();
     } catch (err) {

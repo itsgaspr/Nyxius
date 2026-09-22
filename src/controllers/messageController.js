@@ -1,47 +1,80 @@
-// controllers/messageController.js
 import { generateTriviaQuestion, explainTopic } from "../integrations/groq.js";
+import {
+  extractNumber,
+  sameUser,
+  findParticipant,
+  isPrivilegedSender,
+  resolveBotParticipant,
+} from "../utils/jid.js";
+import {
+  getMessageText,
+  getMentionsAndQuote,
+  parseCommand,
+  PREFIX,
+  isReplyToBot,
+} from "../utils/message.js";
+import { getGroupMeta } from "../utils/groupMeta.js";
+import { runAutoMod } from "./autoModController.js";
+import {
+  handleWarnCommand,
+  handleUnwarnCommand,
+  handleWarnsCommand,
+  handleAntilinkCommand,
+  handleAntispamCommand,
+  handleWelcomeCommand,
+  handleSetWelcomeCommand,
+  handleLogsCommand,
+  handleLangCommand,
+  handleAntimediaCommand,
+  handleDelCommand,
+} from "./adminCommands.js";
+import { handleAfkCommand, maybeClearAfk, enforceAfkMentions } from "./afkController.js";
+import { enforceAntiMedia } from "./antiMediaController.js";
+import { handlePlayCommand, handlePlayPick, handlePinCommand } from "./mediaCommands.js";
+import { handleForcaCommand, handleHangmanGuess } from "../games/hangman.js";
+import { handleTttCommand, handleTttReply } from "../games/tictactoe.js";
+import { addLog, getSettings } from "../services/moderationService.js";
+import { BOT, formatBotInfo, isAboutBot } from "../config/bot.js";
+import { reactTo, sendQuoted } from "../utils/feedback.js";
+import { sendBranded } from "../utils/avatar.js";
+import {
+  COMMANDS,
+  resolveCommand,
+  formatCommandHelp,
+  makeT,
+} from "../i18n/index.js";
 
-const PREFIX = ".";
-const BOT_OWNER = process.env.BOT_OWNER_NUMBER;
+function buildCtx(sock, message, groupMeta, text, parsed, lang) {
+  const jid = message.key.remoteJid;
+  const participants = groupMeta.participants;
+  const senderId = message.key.participant;
+  const botParticipant = resolveBotParticipant(sock, participants);
+  const senderParticipant = findParticipant(participants, senderId);
+  const { target, mentioned, quoted } = getMentionsAndQuote(message);
 
-// ==================== COMMANDS ====================
-const COMMANDS = {
-  kick: { desc: "Remove a member", usage: ".kick", adminOnly: true },
-  mute: { desc: "Silence the group", usage: ".mute", adminOnly: true },
-  unmute: { desc: "Open the group", usage: ".unmute", adminOnly: true },
-  promote: { desc: "Promote a member", usage: ".promote", adminOnly: true },
-  demote: { desc: "Demote an admin", usage: ".demote", adminOnly: true },
-  info: { desc: "Show group information", usage: ".info" },
-  help: { desc: "Show this menu", usage: ".help" },
-  warn: { desc: "Warns a specific member", usage: ".warn", adminOnly: true },
-  trivia: {
-    desc: "Generates a trivia question and options with the answers. The first user to choose the correct option wins. trivia only resets after 60s",
-    usage: ".trivia",
-  },
-  explain: { desc: "Explain a topic using AI", usage: ".explain <topic>" },
-};
+  return {
+    sock,
+    message,
+    jid,
+    text,
+    cmd: parsed?.cmd || null,
+    args: parsed?.args || [],
+    argText: parsed?.argText || "",
+    senderId,
+    groupMeta,
+    participants,
+    botJid: botParticipant?.id || null,
+    isBotAdmin: botParticipant?.admin != null,
+    isAdmin: senderParticipant?.admin != null,
+    isOwner: isPrivilegedSender(senderId),
+    target,
+    mentioned,
+    quoted,
+    lang,
+    t: makeT(lang),
+  };
+}
 
-// ==================== UTILS ====================
-
-// normaliza qualquer JID para só o número
-const extractNumber = (jid) => {
-  if (!jid) return null;
-  return jid.split("@")[0].split(":")[0];
-};
-
-// compara dois JIDs independentemente do formato (@lid, @s.whatsapp.net, com/sem :device)
-const sameUser = (a, b) => {
-  if (!a || !b) return false;
-  return extractNumber(a) === extractNumber(b);
-};
-
-// encontra um participante pelo número, independente do formato do JID
-const findParticipant = (participants, jid) => {
-  const num = extractNumber(jid);
-  return participants.find((p) => extractNumber(p.id) === num) || null;
-};
-
-// ==================== MAIN HANDLER ====================
 export async function handleMessage(sock, message) {
   try {
     if (message.key.fromMe) return;
@@ -50,548 +83,302 @@ export async function handleMessage(sock, message) {
     const jid = message.key.remoteJid;
     if (!jid?.endsWith("@g.us")) return;
 
-    const msg = message.message;
-    const text =
-      msg?.conversation ||
-      msg?.extendedTextMessage?.text ||
-      msg?.imageMessage?.caption ||
-      msg?.videoMessage?.caption ||
-      "";
+    const text = getMessageText(message);
 
-    // Check for trivia answers (before prefix check)
-    checkTriviaAnswer(sock, message);
-
-    if (!text.startsWith(PREFIX)) return;
-
-    const [rawCmd] = text.slice(PREFIX.length).trim().split(/\s+/);
-    const cmd = rawCmd.toLowerCase();
-
-    if (!COMMANDS[cmd]) return;
-
-    console.log(
-      `\n📨 Command received: "${cmd}" | from: ${message.key.participant} | group: ${jid}`,
-    );
-
-    // ================= GROUP METADATA =================
     let groupMeta;
     try {
-      groupMeta = await sock.groupMetadata(jid);
-      console.log(
-        `📋 Group: "${groupMeta.subject}" | participants: ${groupMeta.participants.length}`,
-      );
+      groupMeta = await getGroupMeta(sock, jid);
     } catch (err) {
       console.error("❌ Metadata error:", err);
       return;
     }
 
-    const participants = groupMeta.participants;
+    const settings = await getSettings(jid);
+    const lang = settings.lang === "en" ? "en" : "pt";
+    const parsed = parseCommand(text);
+    const ctx = buildCtx(sock, message, groupMeta, text, parsed, lang);
+    ctx.settings = settings;
 
-    // ================= IDS =================
-    const senderId = message.key.participant;
-    const botRawId = sock.user?.id;
+    await maybeClearAfk(sock, ctx);
+    if (await enforceAfkMentions(sock, ctx)) return;
+    if (await enforceAntiMedia(sock, ctx)) return;
 
-    console.log(`🤖 sock.user.id raw: ${botRawId}`);
-    console.log(`👤 senderId: ${senderId}`);
-    console.log(`👑 BOT_OWNER env: ${BOT_OWNER}`);
-    console.log(
-      `📌 All participants:`,
-      participants.map((p) => `${p.id} (admin: ${p.admin})`),
-    );
+    const blocked = await runAutoMod(sock, ctx);
+    if (blocked) return;
 
-    // ================= LOCATE BOT IN PARTICIPANTS =================
-    // grupos novos usam @lid, grupos antigos usam @s.whatsapp.net
-    // findParticipant normaliza pelo número para cobrir ambos
-    // depois
-    const botLid = sock.user?.lid;
+    const triviaHandled = checkTriviaAnswer(sock, message, ctx);
+    if (triviaHandled && !parsed) return;
 
-    console.log(`🤖 sock.user.id raw: ${botRawId}`);
-    console.log(`🤖 sock.user.lid: ${botLid}`);
-    console.log(`👤 senderId: ${senderId}`);
-    console.log(`👑 BOT_OWNER env: ${BOT_OWNER}`);
-    console.log(
-      `📌 All participants:`,
-      participants.map((p) => `${p.id} (admin: ${p.admin})`),
-    );
+    if (await handlePlayPick(sock, ctx)) return;
 
-    // tenta por @lid primeiro, fallback para número
-    const botParticipant =
-      (botLid ? findParticipant(participants, botLid) : null) ||
-      findParticipant(participants, botRawId);
+    if (!triviaHandled && (await handleHangmanGuess(sock, ctx))) return;
 
-    console.log(`🤖 botParticipant found:`, botParticipant ?? "NOT FOUND");
+    if (await handleTttReply(sock, ctx)) return;
 
-    if (!botParticipant) {
-      console.warn(
-        "⚠️ Bot not found in participants list — cannot determine bot role.",
-      );
+    const cmdId = parsed ? resolveCommand(parsed.cmd) : null;
+    if (!cmdId) return;
+
+    const meta = COMMANDS[cmdId];
+    console.log(`📨 Command: "${cmdId}" (${parsed.cmd}) | from: ${ctx.senderId} | group: ${jid}`);
+    void reactTo(sock, message, "👀");
+
+    if (meta.adminOnly && !ctx.isAdmin && !ctx.isOwner) {
+      return sendQuoted(sock, jid, { text: ctx.t("only_admin") }, message, "only-admin", 12_000);
     }
 
-    const botJid = botParticipant?.id || null;
-    const isBotAdmin = botParticipant?.admin != null; // 'admin' | 'superadmin' | null
-
-    // ================= SENDER ROLE =================
-    const senderParticipant = findParticipant(participants, senderId);
-    const isAdmin = senderParticipant?.admin != null;
-    const isOwner =
-      sameUser(senderId, process.env.BOT_OWNER_NUMBER) ||
-      sameUser(senderId, process.env.BOT_OWNER_LID);
-
-    console.log(
-      `🔐 isAdmin: ${isAdmin} | isBotAdmin: ${isBotAdmin} | isOwner: ${isOwner}`,
-    );
-
-    // ================= PERMISSION CHECK =================
-    if (COMMANDS[cmd].adminOnly && !isAdmin && !isOwner) {
-      console.log(`🚫 Permission denied for "${cmd}"`);
-      return sock.sendMessage(jid, {
-        text: "❌ Only admins or bot owner can use this command.",
-      });
-    }
-
-    // ================= TARGET RESOLUTION =================
-    const context = msg?.extendedTextMessage?.contextInfo || {};
-    const quoted = context.participant || null;
-    const mentioned = context.mentionedJid || [];
-    const target = quoted || mentioned[0] || null;
-
-    console.log(
-      `🎯 Target resolved: ${target ?? "none"} | quoted: ${quoted} | mentioned: ${mentioned}`,
-    );
-
-    // ================= ROUTER =================
     const handlers = {
-      kick: () =>
-        handleKick(
-          sock,
-          jid,
-          target,
-          participants,
-          isBotAdmin,
-          isOwner,
-          botJid,
-          message,
-        ),
-      mute: () => handleMute(sock, jid, isBotAdmin, true, isOwner, message),
-      unmute: () => handleMute(sock, jid, isBotAdmin, false, isOwner, message),
-      promote: () =>
-        handleRole(
-          sock,
-          jid,
-          target,
-          participants,
-          isBotAdmin,
-          "promote",
-          isOwner,
-          botJid,
-          message,
-        ),
-      demote: () =>
-        handleRole(
-          sock,
-          jid,
-          target,
-          participants,
-          isBotAdmin,
-          "demote",
-          isOwner,
-          botJid,
-          message,
-        ),
-      info: () => handleInfo(sock, jid, groupMeta, message),
-      help: () => handleHelp(sock, jid, isAdmin || isOwner, message),
-      warn: () =>
-        handleWarn(
-          sock,
-          jid,
-          target,
-          participants,
-          isBotAdmin,
-          "warn",
-          isOwner,
-          botJid,
-          message,
-        ),
-      trivia: () => handleTrivia(sock, jid, message),
-      explain: () => handleExplain(sock, jid, message),
+      kick: () => handleKick(ctx),
+      mute: () => handleMute(ctx, true),
+      unmute: () => handleMute(ctx, false),
+      promote: () => handleRole(ctx, "promote"),
+      demote: () => handleRole(ctx, "demote"),
+      info: () => handleInfo(ctx),
+      botinfo: () => handleBotInfo(ctx),
+      help: () => handleHelp(ctx),
+      warn: () => handleWarnCommand(sock, ctx),
+      unwarn: () => handleUnwarnCommand(sock, ctx),
+      warns: () => handleWarnsCommand(sock, ctx),
+      antilink: () => handleAntilinkCommand(sock, ctx),
+      antispam: () => handleAntispamCommand(sock, ctx),
+      welcome: () => handleWelcomeCommand(sock, ctx),
+      setwelcome: () => handleSetWelcomeCommand(sock, ctx),
+      logs: () => handleLogsCommand(sock, ctx),
+      lang: () => handleLangCommand(sock, ctx),
+      antimedia: () => handleAntimediaCommand(sock, ctx),
+      del: () => handleDelCommand(sock, ctx),
+      afk: () => handleAfkCommand(sock, ctx),
+      trivia: () => handleTrivia(ctx),
+      forca: () => handleForcaCommand(sock, ctx),
+      ttt: () => handleTttCommand(sock, ctx),
+      play: () => handlePlayCommand(sock, ctx),
+      pin: () => handlePinCommand(sock, ctx),
+      explain: () => handleExplain(ctx),
     };
 
-    await handlers[cmd]();
+    try {
+      await handlers[cmdId]();
+      console.log(`✅ Command done: ${cmdId}`);
+    } catch (err) {
+      console.error(`❌ Command crashed: ${cmdId}`, err);
+      await sendQuoted(sock, jid, { text: ctx.t("cmd_fail") }, message, "cmd-fail", 12_000).catch(
+        (sendErr) => console.error("❌ fail notice:", sendErr.message),
+      );
+    }
   } catch (err) {
     console.error("🔥 Fatal error in handleMessage:", err);
   }
 }
 
-// ==================== HANDLERS ====================
-
-// ===== KICK =====
-async function handleKick(
-  sock,
-  jid,
-  target,
-  participants,
-  isBotAdmin,
-  isOwner,
-  botJid,
-  message,
-) {
-  console.log(
-    `\n⚙️  handleKick | target: ${target} | isBotAdmin: ${isBotAdmin} | isOwner: ${isOwner}`,
-  );
+async function handleKick(ctx) {
+  const { sock, jid, target, participants, isBotAdmin, isOwner, botJid, message, senderId, t } = ctx;
 
   if (!target) {
-    return sock.sendMessage(
-      jid,
-      { text: "⚠️ Reply or @mention a user." },
-      { quoted: message },
-    );
+    return sendQuoted(sock, jid, { text: t("mention_user") }, message, "kick", 12_000);
   }
-
   if (!isBotAdmin && !isOwner) {
-    console.log("🚫 Bot is not admin — cannot kick");
-    return sock.sendMessage(
-      jid,
-      { text: "⚠️ I need admin rights." },
-      { quoted: message },
-    );
+    return sendQuoted(sock, jid, { text: t("need_admin") }, message, "kick", 12_000);
   }
-
   if (sameUser(target, botJid)) {
-    return sock.sendMessage(
-      jid,
-      { text: "⚠️ I cannot remove myself." },
-      { quoted: message },
-    );
+    return sendQuoted(sock, jid, { text: t("cannot_self_kick") }, message, "kick", 12_000);
   }
 
   const targetParticipant = findParticipant(participants, target);
-  const isTargetAdmin = targetParticipant?.admin != null;
-
-  console.log(
-    `🎯 target participant:`,
-    targetParticipant ?? "NOT FOUND",
-    `| isTargetAdmin: ${isTargetAdmin}`,
-  );
-
-  if (isTargetAdmin && !isOwner) {
-    return sock.sendMessage(
-      jid,
-      { text: "❌ Cannot remove an admin." },
-      { quoted: message },
-    );
+  if (targetParticipant?.admin != null && !isOwner) {
+    return sendQuoted(sock, jid, { text: t("cannot_kick_admin") }, message, "kick", 12_000);
   }
 
   try {
-    // usa o JID exato do participante encontrado (respeita @lid vs @s.whatsapp.net)
     const targetJid = targetParticipant?.id || target;
     await sock.groupParticipantsUpdate(jid, [targetJid], "remove");
-    console.log(`✅ Kicked: ${targetJid}`);
-    await sock.sendMessage(
-      jid,
-      { text: "✅ Member removed." },
-      { quoted: message },
-    );
+    await addLog({ groupJid: jid, action: "kick", actor: senderId, target: targetJid });
+    await sendQuoted(sock, jid, { text: t("member_removed") }, message, "kick", 12_000);
   } catch (err) {
     console.error("❌ Kick error:", err);
-    await sock.sendMessage(
-      jid,
-      { text: "❌ Failed to remove member." },
-      { quoted: message },
-    );
+    await sendQuoted(sock, jid, { text: t("kick_failed") }, message, "kick", 12_000);
   }
 }
 
-// ===== MUTE / UNMUTE =====
-async function handleMute(sock, jid, isBotAdmin, mute, isOwner, message) {
-  console.log(
-    `\n⚙️  handleMute | mute: ${mute} | isBotAdmin: ${isBotAdmin} | isOwner: ${isOwner}`,
-  );
-
+async function handleMute(ctx, mute) {
+  const { sock, jid, isBotAdmin, isOwner, message, t } = ctx;
   if (!isBotAdmin && !isOwner) {
-    console.log("🚫 Bot is not admin — cannot mute");
-    return sock.sendMessage(
-      jid,
-      { text: "⚠️ I need admin rights." },
-      { quoted: message },
-    );
+    return sendQuoted(sock, jid, { text: t("need_admin") }, message, "mute", 12_000);
   }
-
   try {
-    await sock.groupSettingUpdate(
+    await sock.groupSettingUpdate(jid, mute ? "announcement" : "not_announcement");
+    await sendQuoted(
+      sock,
       jid,
-      mute ? "announcement" : "not_announcement",
-    );
-    console.log(`✅ Group ${mute ? "muted" : "unmuted"}`);
-    await sock.sendMessage(
-      jid,
-      {
-        text: mute ? "🔇 Group silenced." : "🔊 Group opened.",
-      },
-      { quoted: message },
+      { text: mute ? t("group_muted") : t("group_unmuted") },
+      message,
+      "mute",
+      12_000,
     );
   } catch (err) {
     console.error("❌ Mute error:", err);
-    await sock.sendMessage(
-      jid,
-      { text: "❌ Failed to change setting." },
-      { quoted: message },
-    );
+    await sendQuoted(sock, jid, { text: t("mute_failed") }, message, "mute", 12_000);
   }
 }
 
-// ===== PROMOTE / DEMOTE =====
-async function handleRole(
-  sock,
-  jid,
-  target,
-  participants,
-  isBotAdmin,
-  action,
-  isOwner,
-  botJid,
-  message,
-) {
-  console.log(
-    `\n⚙️  handleRole | action: ${action} | target: ${target} | isBotAdmin: ${isBotAdmin}`,
-  );
-
+async function handleRole(ctx, action) {
+  const { sock, jid, target, participants, isBotAdmin, isOwner, botJid, message, t } = ctx;
   if (!target) {
-    return sock.sendMessage(
-      jid,
-      { text: "⚠️ Reply or @mention a user." },
-      { quoted: message },
-    );
+    return sendQuoted(sock, jid, { text: t("mention_user") }, message, "role", 12_000);
   }
-
   if (!isBotAdmin && !isOwner) {
-    console.log("🚫 Bot is not admin — cannot change roles");
-    return sock.sendMessage(
-      jid,
-      { text: "⚠️ I need admin rights." },
-      { quoted: message },
-    );
+    return sendQuoted(sock, jid, { text: t("need_admin") }, message, "role", 12_000);
   }
-
   if (sameUser(target, botJid)) {
-    return sock.sendMessage(
-      jid,
-      { text: "⚠️ I cannot change my own role." },
-      { quoted: message },
-    );
+    return sendQuoted(sock, jid, { text: t("cannot_self_role") }, message, "role", 12_000);
   }
-
   try {
     const targetParticipant = findParticipant(participants, target);
-    const targetJid = targetParticipant?.id || target;
-    await sock.groupParticipantsUpdate(jid, [targetJid], action);
-    console.log(`✅ ${action}: ${targetJid}`);
-    await sock.sendMessage(
+    await sock.groupParticipantsUpdate(jid, [targetParticipant?.id || target], action);
+    await sendQuoted(
+      sock,
       jid,
-      {
-        text:
-          action === "promote"
-            ? "✅ Promoted to admin."
-            : "✅ Demoted to member.",
-      },
-      { quoted: message },
+      { text: action === "promote" ? t("promoted") : t("demoted") },
+      message,
+      "role",
+      12_000,
     );
   } catch (err) {
     console.error(`❌ Role error (${action}):`, err);
-    await sock.sendMessage(
-      jid,
-      { text: "❌ Failed to change role." },
-      { quoted: message },
-    );
+    await sendQuoted(sock, jid, { text: t("role_failed") }, message, "role", 12_000);
   }
 }
 
-// ===== INFO =====
-async function handleInfo(sock, jid, groupMeta, message) {
-  console.log(`\n⚙️  handleInfo | group: ${groupMeta.subject}`);
-
+async function handleInfo(ctx) {
+  const { sock, jid, groupMeta, message, t } = ctx;
   const adminParticipants = groupMeta.participants.filter((p) => p.admin);
-  const admins = adminParticipants
-    .map((p) => `• @${extractNumber(p.id)}`)
-    .join("\n");
-
+  const admins = adminParticipants.map((p) => `• @${extractNumber(p.id)}`).join("\n");
   const text = [
     `📋 *${groupMeta.subject}*`,
     ``,
-    `👥 Members: ${groupMeta.participants.length}`,
-    `🛡️ Admins:\n${admins}`,
-    `📅 Created: ${new Date(groupMeta.creation * 1000).toLocaleDateString()}`,
+    t("info_members", { n: groupMeta.participants.length }),
+    `${t("info_admins")}\n${admins}`,
+    t("info_created", {
+      date: new Date(groupMeta.creation * 1000).toLocaleDateString(t("locale")),
+    }),
     groupMeta.desc ? `\n📝 ${groupMeta.desc}` : "",
   ].join("\n");
-
-  const mentions = adminParticipants.map((p) => p.id);
-  await sock.sendMessage(jid, { text, mentions }, { quoted: message });
-}
-
-// ===== HELP =====
-async function handleHelp(sock, jid, isPrivileged, message) {
-  console.log(`\n⚙️  handleHelp | isPrivileged: ${isPrivileged}`);
-
-  const lines = Object.entries(COMMANDS)
-    .filter(([, meta]) => !meta.adminOnly || isPrivileged)
-    .map(([, meta]) => `${meta.usage} — ${meta.desc}`);
-
-  await sock.sendMessage(
+  await sendQuoted(
+    sock,
     jid,
-    {
-      text: `🤖 *Commands:*\n\n${lines.join("\n")}`,
-    },
-    { quoted: message },
+    { text, mentions: adminParticipants.map((p) => p.id) },
+    message,
+    "info",
+    20_000,
   );
 }
 
-// ===== WARN =====
-async function handleWarn(
-  sock,
-  jid,
-  target,
-  participants,
-  isBotAdmin,
-  action,
-  isOwner,
-  botJid,
-  message,
-) {
-  console.log(
-    `\n⚙️  handleWarn | target: ${target} | isBotAdmin: ${isBotAdmin} | isOwner: ${isOwner}`,
-  );
-
-  if (!target) {
-    return sock.sendMessage(
-      jid,
-      { text: "⚠️ Reply or @mention a user to warn." },
-      { quoted: message },
-    );
-  }
-
-  if (sameUser(target, botJid)) {
-    return sock.sendMessage(
-      jid,
-      { text: "⚠️ I cannot warn myself." },
-      { quoted: message },
-    );
-  }
-
-  const targetParticipant = findParticipant(participants, target);
-
-  if (!targetParticipant) {
-    console.log("🎯 Target participant not found");
-    return sock.sendMessage(
-      jid,
-      { text: "⚠️ User not found in the group." },
-      { quoted: message },
-    );
-  }
-
-  try {
-    const targetNumber = extractNumber(targetParticipant.id);
-    const warningText = `⚠️ @${targetNumber}, Please behave yourself or you'll be removed. 🙂`;
-
-    await sock.sendMessage(
-      jid,
-      {
-        text: warningText,
-        mentions: [targetParticipant.id],
-      },
-      { quoted: message },
-    );
-
-    console.log(`✅ Warned: ${targetParticipant.id}`);
-  } catch (err) {
-    console.error("❌ Warn error:", err);
-    await sock.sendMessage(
-      jid,
-      { text: "❌ Failed to send warning." },
-      { quoted: message },
-    );
-  }
+async function handleBotInfo(ctx) {
+  const { sock, jid, message, lang } = ctx;
+  await sendBranded(sock, jid, formatBotInfo(lang), message, "botinfo");
 }
 
-// ===== TRIVIA STATE =====
+async function handleHelp(ctx) {
+  const { sock, jid, isAdmin, isOwner, message, lang, t } = ctx;
+  const privileged = isAdmin || isOwner;
+  const grouped = {};
+
+  for (const [id, meta] of Object.entries(COMMANDS)) {
+    if (meta.adminOnly && !privileged) continue;
+    const cat = meta.category || "util";
+    if (!grouped[cat]) grouped[cat] = [];
+    grouped[cat].push(formatCommandHelp(id, lang));
+  }
+
+  const order = ["admin", "jogos", "midia", "util"];
+  const blocks = order
+    .filter((key) => grouped[key]?.length)
+    .map((key) => `${t(`cat_${key}`)}\n${grouped[key].join("\n")}`);
+
+  const text = [
+    t("help_title"),
+    "",
+    blocks.join("\n\n"),
+    "",
+    t("help_footer", { creator: BOT.creator }),
+  ].join("\n");
+
+  await sendBranded(sock, jid, text, message, "help");
+}
+
 const triviaState = new Map();
 
-// ===== TRIVIA ANSWER LISTENER =====
-export function checkTriviaAnswer(sock, message) {
+export function checkTriviaAnswer(sock, message, ctx) {
   const jid = message.key.remoteJid;
-  if (!jid?.endsWith("@g.us")) return;
-  if (message.key.fromMe) return;
+  if (!jid?.endsWith("@g.us")) return false;
+  if (message.key.fromMe) return false;
+  if (!isReplyToBot(message, sock)) return false;
 
   const state = triviaState.get(jid);
-  if (!state?.active) return;
+  if (!state?.active) return false;
 
-  const msg = message.message;
-  const text = (msg?.conversation || msg?.extendedTextMessage?.text || "")
-    .trim()
-    .toUpperCase();
-
-  if (!["A", "B", "C", "D"].includes(text)) return;
+  const text = getMessageText(message).trim().toUpperCase();
+  if (!["A", "B", "C", "D"].includes(text)) return false;
 
   if (text === state.answer) {
     triviaState.set(jid, { ...state, active: false });
-
     const senderId = message.key.participant;
     const number = extractNumber(senderId);
-
-    sock.sendMessage(jid, {
-      text: `🎉 *@${number} got it right!*\n✅ The answer was *${state.answer}*: ${state.options[state.answer]}`,
-      mentions: [senderId],
-    });
-
-    console.log(`✅ Trivia answered correctly by ${senderId} in ${jid}`);
+    const tFn = ctx?.t || makeT(state.lang || "pt");
+    sendQuoted(
+      sock,
+      jid,
+      {
+        text: tFn("trivia_right", {
+          user: number,
+          answer: state.answer,
+          option: state.options[state.answer],
+        }),
+        mentions: [senderId],
+      },
+      message,
+      "trivia-right",
+      12_000,
+    ).catch((err) => console.error("trivia-right failed:", err.message));
   }
+  return true;
 }
 
-/// ===== TRIVIA HANDLER =====
-async function handleTrivia(sock, jid, message) {
-  console.log(`\n⚙️  handleTrivia | jid: ${jid}`);
-
+async function handleTrivia(ctx) {
+  const { sock, jid, message, t, lang } = ctx;
   const state = triviaState.get(jid) || {};
   const COOLDOWN = 10_000;
 
   if (state.lastUsed && Date.now() - state.lastUsed < COOLDOWN) {
-    const secsLeft = Math.ceil(
-      (COOLDOWN - (Date.now() - state.lastUsed)) / 1000,
-    );
-    return sock.sendMessage(jid, {
-      text: `⏳ Wait *${secsLeft}s* before starting a new trivia.`,
-    });
+    const secsLeft = Math.ceil((COOLDOWN - (Date.now() - state.lastUsed)) / 1000);
+    return sendQuoted(sock, jid, { text: t("trivia_wait", { secs: secsLeft }) }, message, "trivia", 12_000);
   }
 
-  triviaState.set(jid, { ...state, lastUsed: Date.now(), active: false });
+  triviaState.set(jid, { ...state, lastUsed: Date.now(), active: false, lang });
 
   let triviaData;
   try {
-    await sock.sendMessage(jid, { text: "🎲 Generating a trivia question..." });
-    triviaData = await generateTriviaQuestion();
+    await sendQuoted(sock, jid, { text: t("trivia_generating") }, message, "trivia-wait", 12_000);
+    triviaData = await generateTriviaQuestion(lang);
   } catch (err) {
     console.error("❌ Trivia generation error:", err);
-    return sock.sendMessage(jid, {
-      text: "❌ Failed to generate trivia question. Try again.",
-    });
+    return sendQuoted(sock, jid, { text: t("trivia_fail") }, message, "trivia", 12_000);
   }
 
-  console.log(`🎯 Trivia data:`, triviaData);
   if (!triviaData?.question || !triviaData?.options?.A || !triviaData?.answer) {
-    return sock.sendMessage(jid, {
-      text: "❌ Invalid trivia response. Try again.",
-    });
+    return sendQuoted(sock, jid, { text: t("trivia_invalid") }, message, "trivia", 12_000);
   }
 
   const { question, options, answer } = triviaData;
-
   triviaState.set(jid, {
     active: true,
     question,
     options,
     answer: answer.toUpperCase().trim(),
     lastUsed: Date.now(),
+    lang,
   });
 
   const text = [
-    `🧠 *TRIVIA TIME!*`,
+    `🧠 *TRIVIA*`,
     ``,
     `❓ ${question}`,
     ``,
@@ -600,70 +387,31 @@ async function handleTrivia(sock, jid, message) {
     `🅲 ${options.C}`,
     `🅳 ${options.D}`,
     ``,
-    `💬 Reply with A, B, C or D!`,
+    t("trivia_reply"),
   ].join("\n");
 
-  await sock.sendMessage(jid, { text }, { quoted: message });
-  console.log(`✅ Trivia started in ${jid} | Answer: ${answer}`);
+  await sendQuoted(sock, jid, { text }, message, "trivia", 20_000);
 }
 
-async function handleExplain(sock, jid, message) {
-  console.log(`\n⚙️  handleExplain | jid: ${jid}`);
-
+async function handleExplain(ctx) {
+  const { sock, jid, message, argText, t, lang } = ctx;
   try {
-    // Extract the full message text
-    const messageText =
-      message.message?.extendedTextMessage?.text ||
-      message.message?.conversation ||
-      "";
-
-    // Check if user sent only ".explain" (with or without spaces)
-    if (/^\.explain\s*$/i.test(messageText)) {
-      return sock.sendMessage(
-        jid,
-        {
-          text: "❌ Please provide a topic to explain.\n\n📝 *Usage:* `.explain quantum physics`",
-        },
-        { quoted: message },
-      );
+    if (!argText?.trim()) {
+      return sendQuoted(sock, jid, { text: t("explain_usage") }, message, "explain", 12_000);
     }
-
-    // Extract topic (space is now optional)
-    const topic = messageText.replace(/^\.explain\s*/i, "").trim();
-
-    // Extra safety check
-    if (!topic) {
-      return sock.sendMessage(
-        jid,
-        {
-          text: "Please provide a valid topic.\n\n📝 *Usage:* `.explain quantum physics`",
-        },
-        { quoted: message },
-      );
+    const topic = argText.trim();
+    await sendQuoted(sock, jid, { text: t("explain_thinking") }, message, "explain-wait", 12_000);
+    const explanation = await explainTopic(topic, lang);
+    const body = `📚 *${topic}*\n\n${explanation}`;
+    if (isAboutBot(topic)) {
+      await sendBranded(sock, jid, body, message, "explain");
+    } else {
+      await sendQuoted(sock, jid, { text: body }, message, "explain", 20_000);
     }
-
-    // Send loading message
-    await sock.sendMessage(
-      jid,
-      { text: "🔍 Let me think about that..." },
-      { quoted: message },
-    );
-
-    // Get explanation from AI
-    console.log(`📚 Explaining: ${topic}`);
-    const explanation = await explainTopic(topic);
-
-    // Send the explanation
-    const responseText = `📚 *Explanation: ${topic}*\n\n${explanation}`;
-    await sock.sendMessage(jid, { text: responseText }, { quoted: message });
-
-    console.log(`✅ Explanation sent for: ${topic}`);
   } catch (error) {
     console.error("❌ Error in handleExplain:", error);
-    await sock.sendMessage(
-      jid,
-      { text: "❌ Failed to generate explanation. Please try again." },
-      { quoted: message },
-    );
+    await sendQuoted(sock, jid, { text: t("explain_fail") }, message, "explain", 12_000);
   }
 }
+
+export { PREFIX };

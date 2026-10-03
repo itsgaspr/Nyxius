@@ -12,6 +12,7 @@ import { extractNumber, findParticipant, sameUser } from "../utils/jid.js";
 import { normalizeLang, makeT } from "../i18n/index.js";
 import { sendQuoted } from "../utils/feedback.js";
 import { getQuotedKey } from "../utils/message.js";
+import { normalizeTodLevel, labelTodLevel } from "../games/truthordare.js";
 
 function say(sock, ctx, content) {
   return sendQuoted(sock, ctx.jid, content, ctx.message, "admin", 20_000);
@@ -255,4 +256,42 @@ export async function handleLangCommand(sock, ctx) {
   await updateSettings(jid, { lang: next });
   const tNext = makeT(next);
   return say(sock, ctx, { text: tNext("lang_set", { lang: next }) });
+}
+
+function normalizeTriviaMode(argText) {
+  const raw = (argText || "").trim().toLowerCase();
+  if (["fun", "funny", "divertido", "loco", "crazy"].includes(raw)) return "fun";
+  if (["normal", "classic", "padrao", "padrão", "default", "std"].includes(raw)) return "normal";
+  return null;
+}
+
+export async function handleSetmodeCommand(sock, ctx) {
+  const { jid, t } = ctx;
+  const settings = await getSettings(jid);
+  const current = settings.triviaMode === "fun" ? "fun" : "normal";
+  const next = normalizeTriviaMode(ctx.argText);
+  if (!next) {
+    return say(sock, ctx, {
+      text: `${t("setmode_usage")}\n${t("setmode_set", { mode: current })}`,
+    });
+  }
+  await updateSettings(jid, { triviaMode: next });
+  return say(sock, ctx, { text: t("setmode_set", { mode: next }) });
+}
+
+export async function handleSettdCommand(sock, ctx) {
+  const { jid, t, lang } = ctx;
+  const settings = await getSettings(jid);
+  const current =
+    settings.todLevel === "medio" || settings.todLevel === "profundo"
+      ? settings.todLevel
+      : "leve";
+  const next = normalizeTodLevel(ctx.argText);
+  if (!next) {
+    return say(sock, ctx, {
+      text: `${t("settd_usage")}\n${t("settd_set", { level: labelTodLevel(current, lang) })}`,
+    });
+  }
+  await updateSettings(jid, { todLevel: next });
+  return say(sock, ctx, { text: t("settd_set", { level: labelTodLevel(next, lang) }) });
 }

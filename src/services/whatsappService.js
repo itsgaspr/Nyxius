@@ -94,7 +94,10 @@ export async function startBot() {
         console.warn("⚠️  Socket did not become ready in time");
       }
       import("../integrations/youtube.js")
-        .then(({ ensureYtDlp }) => ensureYtDlp())
+        .then(async ({ ensureYtDlp, ensureFfmpeg }) => {
+          await ensureYtDlp();
+          await ensureFfmpeg();
+        })
         .catch((err) => console.error("yt-dlp warmup failed:", err.message));
     }
 

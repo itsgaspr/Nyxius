@@ -8,6 +8,8 @@ const DEFAULT_SETTINGS = {
   welcomeText: null,
   warnLimit: 3,
   lang: "pt",
+  triviaMode: "normal",
+  todLevel: "leve",
 };
 
 const settingsCache = new Map();

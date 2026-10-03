@@ -1,0 +1,66 @@
+FUN MODE INSTRUCTIONS (used when .setmode fun is active for .tr)
+==================================================================
+
+Generate a trivia question that is weird, funny, and TRUE.
+
+TONE
+- Light, playful, and conversational, like a witty friend telling you something wild.
+- Make the question itself sound funny or surprising, not like a school test.
+- Wrong options must be absurd on purpose, but believable enough that someone might pick one.
+- After the answer, add a short funny reaction (one or two sentences), for example: "Yes, humans really did that."
+- Keep it clean and warm. No insults, no dark humor, no jokes about death, illness, family, or relationships.
+
+CONTENT RULES
+- Every fact must be real and verifiable.
+- If a fact is a popular myth, skip it, or turn it into "myth or truth?" and reveal it's a myth.
+- Never repeat a question that was already asked.
+- Mix the formats: multiple choice (4 options), true or false, and "which of these is the real one?"
+
+OUTPUT FORMAT
+Question
+Options (A to D) or True/False
+Correct answer
+One funny line explaining the real fact behind it
+
+Make each question feel like: "Wait, did you know...?"
+
+
+FUN MODE TOPICS (add these to the topics array)
+==================================================================
+
+Plain list:
+- Strange laws around the world
+- Bizarre historical facts
+- Weird animal behavior
+- Odd food facts and combinations
+- Strange things the human body does
+- Unusual inventions
+- Science facts that sound fake but are true
+- Funny mistranslations and language quirks
+- Weird world records
+- Strange coincidences in history
+- Weird facts about emotions and feelings
+- Funny psychology quirks (why we laugh, cry, blush, get butterflies)
+- Quirky facts about love, crushes, and friendship around the world
+- Surprising science of happiness, laughter, and mood
+
+
+JavaScript array version:
+==================================================================
+
+const funTopics = [
+  "Strange laws around the world",
+  "Bizarre historical facts",
+  "Weird animal behavior",
+  "Odd food facts and combinations",
+  "Strange things the human body does",
+  "Unusual inventions",
+  "Science facts that sound fake but are true",
+  "Funny mistranslations and language quirks",
+  "Weird world records",
+  "Strange coincidences in history",
+  "Weird facts about emotions and feelings",
+  "Funny psychology quirks (why we laugh, cry, blush, get butterflies)",
+  "Quirky facts about love, crushes, and friendship around the world",
+  "Surprising science of happiness, laughter, and mood"
+];

@@ -5,7 +5,7 @@ export const COMMANDS = {
     aliases: ["kick", "k", "expulsar", "exp", "banir", "ban"],
     primary: { pt: "expulsar", en: "kick" },
     abbr: ["k", "exp"],
-    desc: { pt: "Remove um membro", en: "Remove a member" },
+    desc: { pt: "Manda alguém embora", en: "Show someone the door" },
     usage: { pt: ".expulsar", en: ".kick" },
   },
   mute: {
@@ -14,7 +14,7 @@ export const COMMANDS = {
     aliases: ["mute", "m", "mutar", "silenciar", "fechar"],
     primary: { pt: "mutar", en: "mute" },
     abbr: ["m"],
-    desc: { pt: "Silencia o grupo", en: "Silence the group" },
+    desc: { pt: "Modo biblioteca no grupo", en: "Library mode for the group" },
     usage: { pt: ".mutar", en: ".mute" },
   },
   unmute: {
@@ -23,7 +23,7 @@ export const COMMANDS = {
     aliases: ["unmute", "um", "desmutar", "abrir"],
     primary: { pt: "desmutar", en: "unmute" },
     abbr: ["um"],
-    desc: { pt: "Abre o grupo", en: "Open the group" },
+    desc: { pt: "Liberta o chat outra vez", en: "Open the chat again" },
     usage: { pt: ".desmutar", en: ".unmute" },
   },
   promote: {
@@ -32,7 +32,7 @@ export const COMMANDS = {
     aliases: ["promote", "pr", "promover", "promo"],
     primary: { pt: "promover", en: "promote" },
     abbr: ["pr", "promo"],
-    desc: { pt: "Promove a admin", en: "Promote to admin" },
+    desc: { pt: "Entrega a coroa de admin", en: "Hand over the admin crown" },
     usage: { pt: ".promover", en: ".promote" },
   },
   demote: {
@@ -41,7 +41,7 @@ export const COMMANDS = {
     aliases: ["demote", "dm", "rebaixar", "rebaixa"],
     primary: { pt: "rebaixar", en: "demote" },
     abbr: ["dm"],
-    desc: { pt: "Rebaixa um admin", en: "Demote an admin" },
+    desc: { pt: "Tira a coroa de admin", en: "Take the admin crown back" },
     usage: { pt: ".rebaixar", en: ".demote" },
   },
   warn: {
@@ -50,7 +50,7 @@ export const COMMANDS = {
     aliases: ["warn", "w", "advertir", "adv"],
     primary: { pt: "advertir", en: "warn" },
     abbr: ["w", "adv"],
-    desc: { pt: "Adverte (3 = kick)", en: "Warn (3 = kick)" },
+    desc: { pt: "Dá um toque (3 = kick)", en: "Give a heads-up (3 = kick)" },
     usage: { pt: ".advertir", en: ".warn" },
   },
   unwarn: {
@@ -59,7 +59,7 @@ export const COMMANDS = {
     aliases: ["unwarn", "uw", "desadvertir"],
     primary: { pt: "desadvertir", en: "unwarn" },
     abbr: ["uw"],
-    desc: { pt: "Remove uma advertência", en: "Remove a warning" },
+    desc: { pt: "Perdoa uma advertência", en: "Forgive a warning" },
     usage: { pt: ".desadvertir", en: ".unwarn" },
   },
   warns: {
@@ -68,7 +68,7 @@ export const COMMANDS = {
     aliases: ["warns", "ws", "advertencias", "warnings"],
     primary: { pt: "advertencias", en: "warns" },
     abbr: ["ws"],
-    desc: { pt: "Lista advertências do grupo", en: "List group warnings" },
+    desc: { pt: "Quem anda no vermelho", en: "Who's on thin ice" },
     usage: { pt: ".advertencias", en: ".warns" },
   },
   antilink: {
@@ -77,7 +77,7 @@ export const COMMANDS = {
     aliases: ["antilink", "al"],
     primary: { pt: "antilink", en: "antilink" },
     abbr: ["al"],
-    desc: { pt: "Bloqueia links", en: "Block links" },
+    desc: { pt: "Links? Por aqui não", en: "Links? Not in here" },
     usage: { pt: ".antilink on/off", en: ".antilink on/off" },
   },
   antispam: {
@@ -86,7 +86,7 @@ export const COMMANDS = {
     aliases: ["antispam", "as"],
     primary: { pt: "antispam", en: "antispam" },
     abbr: ["as"],
-    desc: { pt: "Anti-flood", en: "Anti-flood" },
+    desc: { pt: "Para o flood", en: "Stops the flood" },
     usage: { pt: ".antispam on/off", en: ".antispam on/off" },
   },
   antimedia: {
@@ -95,7 +95,7 @@ export const COMMANDS = {
     aliases: ["antimedia", "am", "viewonce"],
     primary: { pt: "antimedia", en: "antimedia" },
     abbr: ["am"],
-    desc: { pt: "Apaga mídia; fotos view-once", en: "Delete media; photos view-once" },
+    desc: { pt: "Mídia some; fotos view-once", en: "Media vanishes; photos view-once" },
     usage: { pt: ".antimedia on/off", en: ".antimedia on/off" },
   },
   welcome: {
@@ -104,7 +104,7 @@ export const COMMANDS = {
     aliases: ["welcome", "wel", "boasvindas", "bv"],
     primary: { pt: "boasvindas", en: "welcome" },
     abbr: ["wel", "bv"],
-    desc: { pt: "Boas-vindas", en: "Welcome toggle" },
+    desc: { pt: "Liga/desliga o oi aos novos", en: "Toggle the hello for newbies" },
     usage: { pt: ".boasvindas on/off", en: ".welcome on/off" },
   },
   setwelcome: {
@@ -113,7 +113,7 @@ export const COMMANDS = {
     aliases: ["setwelcome", "sw", "setbv"],
     primary: { pt: "setbv", en: "setwelcome" },
     abbr: ["sw", "setbv"],
-    desc: { pt: "Texto de boas-vindas", en: "Welcome text" },
+    desc: { pt: "Escreve o oi de boas-vindas", en: "Write the welcome line" },
     usage: { pt: ".setbv {user} {group}", en: ".setwelcome {user} {group}" },
   },
   logs: {
@@ -122,7 +122,7 @@ export const COMMANDS = {
     aliases: ["logs", "lg", "registro"],
     primary: { pt: "logs", en: "logs" },
     abbr: ["lg"],
-    desc: { pt: "Logs", en: "Logs" },
+    desc: { pt: "O diário do grupo", en: "The group diary" },
     usage: { pt: ".logs", en: ".logs" },
   },
   lang: {
@@ -131,15 +131,36 @@ export const COMMANDS = {
     aliases: ["lang", "idioma"],
     primary: { pt: "idioma", en: "lang" },
     abbr: ["lang"],
-    desc: { pt: "Idioma pt/en", en: "Language pt/en" },
+    desc: { pt: "Falo pt ou en?", en: "Should I speak pt or en?" },
     usage: { pt: ".idioma pt|en", en: ".lang pt|en" },
+  },
+  setmode: {
+    category: "admin",
+    adminOnly: true,
+    aliases: ["setmode", "mode", "modotrivia", "triviamode"],
+    primary: { pt: "setmode", en: "setmode" },
+    abbr: ["mode"],
+    desc: { pt: "Trivia séria ou caos divertido", en: "Serious trivia or fun chaos" },
+    usage: { pt: ".setmode normal|fun", en: ".setmode normal|fun" },
+  },
+  settd: {
+    category: "admin",
+    adminOnly: true,
+    aliases: ["settd", "todmode", "modotd", "intensidadetd"],
+    primary: { pt: "settd", en: "settd" },
+    abbr: ["settd"],
+    desc: {
+      pt: "Quão ousado é o ToD: leve|medio|profundo",
+      en: "How spicy is ToD: light|medium|deep",
+    },
+    usage: { pt: ".settd leve|medio|profundo", en: ".settd light|medium|deep" },
   },
   info: {
     category: "util",
     aliases: ["info", "i", "grupo", "group"],
     primary: { pt: "info", en: "info" },
     abbr: ["i"],
-    desc: { pt: "Informações do grupo", en: "Group information" },
+    desc: { pt: "Ficha do grupo", en: "Group cheat sheet" },
     usage: { pt: ".info", en: ".info" },
   },
   botinfo: {
@@ -147,7 +168,7 @@ export const COMMANDS = {
     aliases: ["botinfo", "bi", "sobre", "about", "nyxius", "nyxus"],
     primary: { pt: "sobre", en: "botinfo" },
     abbr: ["bi", "sobre"],
-    desc: { pt: "Informações do Nyxius", en: "Nyxius bot information" },
+    desc: { pt: "Quem sou eu, afinal", en: "Who I am, really" },
     usage: { pt: ".sobre", en: ".botinfo" },
   },
   help: {
@@ -155,32 +176,43 @@ export const COMMANDS = {
     aliases: ["help", "h", "ajuda", "menu"],
     primary: { pt: "ajuda", en: "help" },
     abbr: ["h", "menu"],
-    desc: { pt: "Mostra este menu", en: "Show this menu" },
+    desc: { pt: "O menu todo bonito", en: "The pretty menu" },
     usage: { pt: ".ajuda", en: ".help" },
   },
   trivia: {
     category: "jogos",
     aliases: ["trivia", "tr", "quiz"],
     primary: { pt: "trivia", en: "trivia" },
-    abbr: ["tr", "quiz"],
-    desc: { pt: "Pergunta de trivia; responde A-D", en: "Trivia question; reply A-D" },
-    usage: { pt: ".trivia", en: ".trivia" },
+    abbr: ["tr"],
+    desc: { pt: "Quiz rápido — responde A-D", en: "Quick quiz — reply A-D" },
+    usage: { pt: ".trivia / .tr", en: ".trivia / .tr" },
   },
   forca: {
     category: "jogos",
-    aliases: ["forca", "f", "hangman", "hg"],
+    aliases: ["forca", "hangman", "hm"],
     primary: { pt: "forca", en: "hangman" },
-    abbr: ["f", "hg"],
-    desc: { pt: "Jogo da forca (com dica)", en: "Hangman (with a hint)" },
-    usage: { pt: ".forca", en: ".hangman" },
+    abbr: ["hm"],
+    desc: { pt: "Forca com dica e tudo", en: "Hangman with a hint" },
+    usage: { pt: ".forca / .hm", en: ".hangman / .hm" },
   },
   ttt: {
     category: "jogos",
     aliases: ["ttt", "velha", "jv", "tictactoe"],
     primary: { pt: "velha", en: "ttt" },
     abbr: ["ttt", "jv"],
-    desc: { pt: "Jogo da velha; responde 1-9", en: "Tic-tac-toe; reply 1-9" },
+    desc: { pt: "Velha clássica — joga 1-9", en: "Classic tic-tac-toe — play 1-9" },
     usage: { pt: ".velha @usuario", en: ".ttt @user" },
+  },
+  td: {
+    category: "jogos",
+    aliases: ["td", "tod", "truthordare", "verdadeoudesafio"],
+    primary: { pt: "td", en: "td" },
+    abbr: ["td"],
+    desc: {
+      pt: "Truth or Dare dirigido a alguém",
+      en: "Truth or Dare aimed at someone",
+    },
+    usage: { pt: ".td @usuario", en: ".td @user" },
   },
   play: {
     category: "midia",
@@ -198,13 +230,13 @@ export const COMMANDS = {
     desc: { pt: "Pin SFW do Pinterest", en: "SFW Pinterest pin" },
     usage: { pt: ".pin <busca>", en: ".pin <query>" },
   },
-  explain: {
+  ask: {
     category: "util",
-    aliases: ["explain", "ex", "explicar", "expl"],
-    primary: { pt: "explicar", en: "explain" },
-    abbr: ["ex", "expl"],
-    desc: { pt: "Explica um tema", en: "Explain a topic" },
-    usage: { pt: ".explicar <tema>", en: ".explain <topic>" },
+    aliases: ["ask", "perguntar", "explain", "ex", "explicar", "expl"],
+    primary: { pt: "ask", en: "ask" },
+    abbr: ["ask", "ex"],
+    desc: { pt: "Pergunta-me qualquer coisa", en: "Ask me anything" },
+    usage: { pt: ".ask <tema>", en: ".ask <topic>" },
   },
   afk: {
     category: "util",
@@ -236,10 +268,43 @@ export function resolveCommand(name) {
   return ALIAS_TO_ID.get(name.toLowerCase()) || null;
 }
 
+const CMD_EMOJI = {
+  kick: "🚪",
+  mute: "🔇",
+  unmute: "🔊",
+  promote: "⬆️",
+  demote: "⬇️",
+  warn: "⚠️",
+  unwarn: "✅",
+  warns: "📋",
+  antilink: "🔗",
+  antispam: "🚫",
+  antimedia: "👁️",
+  welcome: "👋",
+  setwelcome: "📝",
+  logs: "📜",
+  lang: "🌐",
+  setmode: "🎭",
+  settd: "🎚️",
+  trivia: "🧠",
+  forca: "🪢",
+  ttt: "⭕",
+  td: "🎲",
+  play: "🎵",
+  pin: "📌",
+  ask: "💭",
+  afk: "💤",
+  del: "🗑️",
+  info: "ℹ️",
+  botinfo: "🤖",
+  help: "📖",
+};
+
 export function formatCommandHelp(id, lang) {
   const meta = COMMANDS[id];
   if (!meta) return "";
   const usage = meta.usage[lang] || meta.usage.pt;
   const desc = meta.desc[lang] || meta.desc.pt;
-  return `*${usage}* — ${desc}`;
+  const emoji = CMD_EMOJI[id] || "›";
+  return `│ ${emoji} *${usage}*\n│ ${desc}`;
 }

@@ -1,6 +1,6 @@
 import { extractNumber, sameUser } from "../utils/jid.js";
 import { isReplyToBot } from "../utils/message.js";
-import { sendQuoted } from "../utils/feedback.js";
+import { sendQuoted, withTyping } from "../utils/feedback.js";
 
 const pending = new Map();
 const games = new Map();
@@ -79,12 +79,12 @@ export async function handleTttReply(sock, ctx) {
 
   const game = games.get(ctx.jid);
   if (game && /^[1-9]$/.test(raw)) {
-    await playMove(sock, ctx, Number(raw) - 1);
+    await withTyping(sock, ctx.jid, () => playMove(sock, ctx, Number(raw) - 1));
     return true;
   }
 
   if (pending.get(ctx.jid) && ACCEPT.includes(raw)) {
-    await acceptChallenge(sock, ctx);
+    await withTyping(sock, ctx.jid, () => acceptChallenge(sock, ctx));
     return true;
   }
   return false;

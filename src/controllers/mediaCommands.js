@@ -8,9 +8,9 @@ import {
   FAIL_EMOJI,
   OK_EMOJI,
   sendQuoted,
-  startSearchReact,
   reactTo,
   mediaLooksSent,
+  withTyping,
 } from "../utils/feedback.js";
 import { prepareWhatsAppImage, withTempJpeg } from "../utils/waImage.js";
 import { isReplyToBot } from "../utils/message.js";
@@ -31,7 +31,7 @@ function secondsLeft(map, jid, cooldown) {
 }
 
 function formatDuration(seconds) {
-  const s = Number(seconds) || 0;
+  const s = Math.max(0, Math.floor(Number(seconds) || 0));
   const m = Math.floor(s / 60);
   const r = s % 60;
   return `${m}:${String(r).padStart(2, "0")}`;
@@ -56,32 +56,40 @@ async function failOut(sock, ctx, text, err) {
   await sendQuoted(sock, jid, { text }, message, "media-error", 12_000).catch(() => {});
 }
 
-async function sendPlayAudio(sock, ctx, query) {
-  const { jid, message, t } = ctx;
-  const audio = await downloadYoutubeAudio(query);
-  const label = audio.artist ? `${audio.artist} — ${audio.title}` : audio.title;
+function playFileName(label, ext) {
+  const base = String(label || "audio")
+    .replace(/[\/\\?%*:|"<>]/g, "")
+    .replace(/\s+/g, " ")
+    .trim()
+    .slice(0, 80);
+  return `${base || "audio"}.${ext}`;
+}
+
+async function sendPlayAudio(sock, ctx, query, known = null) {
+  const { jid, message } = ctx;
+  const audio = await downloadYoutubeAudio(query, known);
+  const artist = String(audio.artist || "").trim();
+  const title = String(audio.title || "audio").trim();
+  const label = artist ? `${artist} — ${title}` : title;
   console.log(`🎧 play downloaded "${label}" ${audio.mimetype} ${audio.buffer.length}B`);
+
+  // WhatsApp native player (in-chat). Download name will still be AUD-... — that
+  // rename is forced by WhatsApp for audioMessage; only documents keep a custom name.
+  // MP3 + ID3 tags keep artist/title inside the file for music apps.
   await sendQuoted(
     sock,
     jid,
     {
       audio: audio.buffer,
-      mimetype: audio.mimetype,
+      mimetype: "audio/mpeg",
       ptt: false,
-      fileName: `${audio.title}.${audio.mimetype.includes("webm") ? "webm" : audio.mimetype.includes("mpeg") ? "mp3" : "m4a"}`,
+      seconds: Number(audio.duration) || undefined,
+      fileName: playFileName(label, "mp3"),
     },
     message,
     "play-audio",
   );
   await reactTo(sock, message, OK_EMOJI);
-  await sendQuoted(
-    sock,
-    jid,
-    { text: `🎵 *${label}*\n⏱️ ${formatDuration(audio.duration)}` },
-    message,
-    "play-caption",
-    12_000,
-  );
 }
 
 export async function handlePlayCommand(sock, ctx) {
@@ -111,23 +119,21 @@ export async function handlePlayCommand(sock, ctx) {
 
   playBusy.add(jid);
   playLast.set(jid, Date.now());
-  const searching = startSearchReact(sock, message);
   console.log(`🎧 play start query="${query}"`);
   try {
     if (isYoutubeUrl(query)) {
-      await searching;
       await sendPlayAudio(sock, ctx, query);
       return;
     }
 
     const tracks = await searchYoutubeTracks(query, 5);
-    await searching;
     const list = tracks
       .map((track, i) =>
         t("play_pick_item", {
           n: String(i + 1),
           artist: track.artist,
           title: track.title,
+          duration: formatDuration(track.duration),
         }),
       )
       .join("\n");
@@ -182,11 +188,9 @@ export async function handlePlayPick(sock, ctx) {
 
   playPicks.delete(jid);
   playBusy.add(jid);
-  const searching = startSearchReact(sock, message);
   console.log(`🎧 play pick ${choice} "${track.artist} — ${track.title}"`);
   try {
-    await searching;
-    await sendPlayAudio(sock, ctx, track.url);
+    await withTyping(sock, jid, () => sendPlayAudio(sock, ctx, track.url, track));
   } catch (err) {
     await failOut(sock, ctx, playErrorText(t, err), err);
   } finally {
@@ -222,12 +226,10 @@ export async function handlePinCommand(sock, ctx) {
 
   pinBusy.add(jid);
   pinLast.set(jid, Date.now());
-  const searching = startSearchReact(sock, message);
   console.log(`📌 pin start query="${query}"`);
   try {
     const pin = await searchPinterestPin(query);
     console.log(`📌 pin file ${pin.mimetype} ${pin.buffer.length}B ${pin.url}`);
-    await searching;
     const { jpeg, width, height } = await prepareWhatsAppImage(pin.buffer);
     console.log(`📌 pin jpeg ${jpeg.length}B ${width}x${height}`);
     const sent = await withTempJpeg(jpeg, (filePath) =>

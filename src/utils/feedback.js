@@ -1,9 +1,10 @@
 import { rememberMessage } from "./msgStore.js";
 import { waitWaReady } from "./waReady.js";
+import { formatContentForWhatsApp } from "./waFormat.js";
 
 const SEARCH_EMOJI = "🔎";
 const OK_EMOJI = "✅";
-const FAIL_EMOJI = "❌";
+const FAIL_EMOJI = "🫠";
 
 export { SEARCH_EMOJI, OK_EMOJI, FAIL_EMOJI };
 
@@ -43,13 +44,40 @@ export function startSearchReact(sock, message) {
   return reactTo(sock, message, SEARCH_EMOJI);
 }
 
+/** Show "typing…" in the chat while work runs; refreshes so long jobs stay visible. */
+export function startTyping(sock, jid) {
+  let stopped = false;
+  const pulse = () => {
+    if (stopped || !sock?.sendPresenceUpdate) return;
+    sock.sendPresenceUpdate("composing", jid).catch(() => {});
+  };
+  pulse();
+  const timer = setInterval(pulse, 7_000);
+  return async () => {
+    if (stopped) return;
+    stopped = true;
+    clearInterval(timer);
+    await sock.sendPresenceUpdate?.("paused", jid).catch(() => {});
+  };
+}
+
+export async function withTyping(sock, jid, fn) {
+  const stop = startTyping(sock, jid);
+  try {
+    return await fn();
+  } finally {
+    await stop();
+  }
+}
+
 export async function sendQuoted(sock, jid, content, message, label, ms = 45_000) {
   const ready = await waitWaReady(12_000);
   if (!ready) console.warn(`⚠️  ${label}: sending before socket ready`);
   console.log(`📤 ${label}…`);
   try {
     const options = message ? { quoted: message } : {};
-    const sent = await withTimeout(sock.sendMessage(jid, content, options), ms, label);
+    const payload = formatContentForWhatsApp(content);
+    const sent = await withTimeout(sock.sendMessage(jid, payload, options), ms, label);
     if (sent?.key?.id && sent.message) rememberMessage(sent.key.id, sent.message);
     const media =
       sent?.message?.imageMessage ||

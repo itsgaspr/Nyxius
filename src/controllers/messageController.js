@@ -1,4 +1,8 @@
-import { generateTriviaQuestion, explainTopic } from "../integrations/groq.js";
+import {
+  generateTriviaQuestion,
+  explainTopic,
+  explainTriviaAnswer,
+} from "../integrations/groq.js";
 import {
   extractNumber,
   sameUser,
@@ -25,6 +29,8 @@ import {
   handleSetWelcomeCommand,
   handleLogsCommand,
   handleLangCommand,
+  handleSetmodeCommand,
+  handleSettdCommand,
   handleAntimediaCommand,
   handleDelCommand,
 } from "./adminCommands.js";
@@ -33,10 +39,12 @@ import { enforceAntiMedia } from "./antiMediaController.js";
 import { handlePlayCommand, handlePlayPick, handlePinCommand } from "./mediaCommands.js";
 import { handleForcaCommand, handleHangmanGuess } from "../games/hangman.js";
 import { handleTttCommand, handleTttReply } from "../games/tictactoe.js";
+import { handleTodCommand, handleTodReply } from "../games/truthordare.js";
 import { addLog, getSettings } from "../services/moderationService.js";
 import { BOT, formatBotInfo, isAboutBot } from "../config/bot.js";
-import { reactTo, sendQuoted } from "../utils/feedback.js";
+import { reactTo, sendQuoted, withTyping } from "../utils/feedback.js";
 import { sendBranded } from "../utils/avatar.js";
+import { formatAskCard } from "../utils/waFormat.js";
 import {
   COMMANDS,
   resolveCommand,
@@ -106,7 +114,7 @@ export async function handleMessage(sock, message) {
     const blocked = await runAutoMod(sock, ctx);
     if (blocked) return;
 
-    const triviaHandled = checkTriviaAnswer(sock, message, ctx);
+    const triviaHandled = await checkTriviaAnswer(sock, message, ctx);
     if (triviaHandled && !parsed) return;
 
     if (await handlePlayPick(sock, ctx)) return;
@@ -114,6 +122,8 @@ export async function handleMessage(sock, message) {
     if (!triviaHandled && (await handleHangmanGuess(sock, ctx))) return;
 
     if (await handleTttReply(sock, ctx)) return;
+
+    if (await handleTodReply(sock, ctx)) return;
 
     const cmdId = parsed ? resolveCommand(parsed.cmd) : null;
     if (!cmdId) return;
@@ -144,19 +154,22 @@ export async function handleMessage(sock, message) {
       setwelcome: () => handleSetWelcomeCommand(sock, ctx),
       logs: () => handleLogsCommand(sock, ctx),
       lang: () => handleLangCommand(sock, ctx),
+      setmode: () => handleSetmodeCommand(sock, ctx),
+      settd: () => handleSettdCommand(sock, ctx),
       antimedia: () => handleAntimediaCommand(sock, ctx),
       del: () => handleDelCommand(sock, ctx),
       afk: () => handleAfkCommand(sock, ctx),
       trivia: () => handleTrivia(ctx),
       forca: () => handleForcaCommand(sock, ctx),
       ttt: () => handleTttCommand(sock, ctx),
+      td: () => handleTodCommand(sock, ctx),
       play: () => handlePlayCommand(sock, ctx),
       pin: () => handlePinCommand(sock, ctx),
-      explain: () => handleExplain(ctx),
+      ask: () => handleAsk(ctx),
     };
 
     try {
-      await handlers[cmdId]();
+      await withTyping(sock, jid, () => handlers[cmdId]());
       console.log(`✅ Command done: ${cmdId}`);
     } catch (err) {
       console.error(`❌ Command crashed: ${cmdId}`, err);
@@ -291,13 +304,21 @@ async function handleHelp(ctx) {
   const order = ["admin", "jogos", "midia", "util"];
   const blocks = order
     .filter((key) => grouped[key]?.length)
-    .map((key) => `${t(`cat_${key}`)}\n${grouped[key].join("\n")}`);
+    .map((key) => {
+      const header = t("help_cat_open", { cat: t(`cat_${key}`) });
+      const body = grouped[key].join("\n│\n");
+      return `${header}\n${body}\n${t("help_cat_close")}`;
+    });
 
   const text = [
     t("help_title"),
+    t("help_subtitle"),
+    "",
+    "┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈",
     "",
     blocks.join("\n\n"),
     "",
+    "┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈",
     t("help_footer", { creator: BOT.creator }),
   ].join("\n");
 
@@ -306,7 +327,17 @@ async function handleHelp(ctx) {
 
 const triviaState = new Map();
 
-export function checkTriviaAnswer(sock, message, ctx) {
+function normalizeTriviaPick(raw, format) {
+  const text = String(raw || "").trim().toUpperCase();
+  if (["A", "B", "C", "D"].includes(text)) return text;
+  if (format === "tf") {
+    if (/^(TRUE|VERDADEIRO|V|YES|SIM)$/.test(text)) return "A";
+    if (/^(FALSE|FALSO|F|NO|NAO|NÃO)$/.test(text)) return "B";
+  }
+  return null;
+}
+
+export async function checkTriviaAnswer(sock, message, ctx) {
   const jid = message.key.remoteJid;
   if (!jid?.endsWith("@g.us")) return false;
   if (message.key.fromMe) return false;
@@ -315,49 +346,99 @@ export function checkTriviaAnswer(sock, message, ctx) {
   const state = triviaState.get(jid);
   if (!state?.active) return false;
 
-  const text = getMessageText(message).trim().toUpperCase();
-  if (!["A", "B", "C", "D"].includes(text)) return false;
+  const pick = normalizeTriviaPick(getMessageText(message), state.format || "mc");
+  if (!pick) return false;
+  if (state.format === "tf" && !["A", "B"].includes(pick)) return false;
 
-  if (text === state.answer) {
-    triviaState.set(jid, { ...state, active: false });
-    const senderId = message.key.participant;
-    const number = extractNumber(senderId);
-    const tFn = ctx?.t || makeT(state.lang || "pt");
-    sendQuoted(
+  const senderId = message.key.participant;
+  const number = extractNumber(senderId);
+  const tFn = ctx?.t || makeT(state.lang || "pt");
+  const lang = state.lang || ctx?.lang || "pt";
+
+  const correct = pick === state.answer;
+  // True/false only has A/B — on a miss, reveal the answer and close the round.
+  if (!correct && state.format !== "tf") {
+    await sendQuoted(
       sock,
       jid,
       {
-        text: tFn("trivia_right", {
+        text: tFn("trivia_wrong", {
           user: number,
-          answer: state.answer,
-          option: state.options[state.answer],
+          pick,
+          option: state.options[pick] || pick,
         }),
         mentions: [senderId],
       },
       message,
-      "trivia-right",
+      "trivia-wrong",
       12_000,
-    ).catch((err) => console.error("trivia-right failed:", err.message));
+    ).catch((err) => console.error("trivia-wrong failed:", err.message));
+    return true;
   }
+
+  triviaState.set(jid, { ...state, active: false });
+
+  await withTyping(sock, jid, async () => {
+    const header = correct
+      ? tFn("trivia_right", {
+          user: number,
+          answer: state.answer,
+          option: state.options[state.answer],
+        })
+      : tFn("trivia_wrong_reveal", {
+          user: number,
+          pick,
+          option: state.options[pick] || pick,
+          answer: state.answer,
+          correct: state.options[state.answer],
+        });
+    let body = header;
+    try {
+      if (state.mode === "fun" && state.funny) {
+        body = `${header}\n\n${tFn("trivia_explain", { explanation: state.funny })}`;
+      } else {
+        const explanation = await explainTriviaAnswer(
+          {
+            question: state.question,
+            options: state.options,
+            answer: state.answer,
+          },
+          lang,
+        );
+        body = `${header}\n\n${tFn("trivia_explain", { explanation })}`;
+      }
+    } catch (err) {
+      console.error("❌ trivia explain failed:", err.message);
+    }
+    await sendQuoted(
+      sock,
+      jid,
+      { text: body, mentions: [senderId] },
+      message,
+      correct ? "trivia-right" : "trivia-wrong-reveal",
+      30_000,
+    );
+  }).catch((err) => console.error("trivia reveal failed:", err.message));
+
   return true;
 }
 
 async function handleTrivia(ctx) {
-  const { sock, jid, message, t, lang } = ctx;
+  const { sock, jid, message, t, lang, settings } = ctx;
   const state = triviaState.get(jid) || {};
   const COOLDOWN = 10_000;
+  const mode = settings?.triviaMode === "fun" ? "fun" : "normal";
 
   if (state.lastUsed && Date.now() - state.lastUsed < COOLDOWN) {
     const secsLeft = Math.ceil((COOLDOWN - (Date.now() - state.lastUsed)) / 1000);
     return sendQuoted(sock, jid, { text: t("trivia_wait", { secs: secsLeft }) }, message, "trivia", 12_000);
   }
 
-  triviaState.set(jid, { ...state, lastUsed: Date.now(), active: false, lang });
+  triviaState.set(jid, { ...state, lastUsed: Date.now(), active: false, lang, mode });
 
   let triviaData;
   try {
-    await sendQuoted(sock, jid, { text: t("trivia_generating") }, message, "trivia-wait", 12_000);
-    triviaData = await generateTriviaQuestion(lang);
+    triviaData = await generateTriviaQuestion(lang, mode);
   } catch (err) {
     console.error("❌ Trivia generation error:", err);
     return sendQuoted(sock, jid, { text: t("trivia_fail") }, message, "trivia", 12_000);
@@ -367,50 +448,53 @@ async function handleTrivia(ctx) {
     return sendQuoted(sock, jid, { text: t("trivia_invalid") }, message, "trivia", 12_000);
   }
 
-  const { question, options, answer } = triviaData;
+  const { question, options, answer, format = "mc", funny = "" } = triviaData;
   triviaState.set(jid, {
     active: true,
     question,
     options,
     answer: answer.toUpperCase().trim(),
+    format,
+    funny,
+    mode,
     lastUsed: Date.now(),
     lang,
   });
 
-  const text = [
-    `🧠 *TRIVIA*`,
-    ``,
-    `❓ ${question}`,
+  const face = ["🤪", "🧐", "🤓", "😏", "🤔", "😼", "👻", "🧠"][Math.floor(Math.random() * 8)];
+  const lines = [
+    `${face} ${question}`,
     ``,
     `🅰️ ${options.A}`,
     `🅱️ ${options.B}`,
-    `🅲 ${options.C}`,
-    `🅳 ${options.D}`,
-    ``,
-    t("trivia_reply"),
-  ].join("\n");
+  ];
+  if (format !== "tf") {
+    lines.push(`🅲 ${options.C}`, `🅳 ${options.D}`);
+  }
+  lines.push(``, format === "tf" ? t("trivia_reply_tf") : t("trivia_reply"));
 
-  await sendQuoted(sock, jid, { text }, message, "trivia", 20_000);
+  await sendQuoted(sock, jid, { text: lines.join("\n") }, message, "trivia", 20_000);
 }
 
-async function handleExplain(ctx) {
+async function handleAsk(ctx) {
   const { sock, jid, message, argText, t, lang } = ctx;
   try {
     if (!argText?.trim()) {
-      return sendQuoted(sock, jid, { text: t("explain_usage") }, message, "explain", 12_000);
+      return sendQuoted(sock, jid, { text: t("ask_usage") }, message, "ask", 12_000);
     }
     const topic = argText.trim();
-    await sendQuoted(sock, jid, { text: t("explain_thinking") }, message, "explain-wait", 12_000);
+    const aboutBot = isAboutBot(topic);
     const explanation = await explainTopic(topic, lang);
-    const body = `📚 *${topic}*\n\n${explanation}`;
-    if (isAboutBot(topic)) {
-      await sendBranded(sock, jid, body, message, "explain");
-    } else {
-      await sendQuoted(sock, jid, { text: body }, message, "explain", 20_000);
-    }
+    const body = formatAskCard({
+      topic: aboutBot ? BOT.name : topic,
+      body: explanation,
+      lang,
+      aboutBot,
+    });
+    await sendBranded(sock, jid, body, message, "ask");
   } catch (error) {
-    console.error("❌ Error in handleExplain:", error);
-    await sendQuoted(sock, jid, { text: t("explain_fail") }, message, "explain", 12_000);
+    console.error("❌ Error in handleAsk:", error);
+    await sendQuoted(sock, jid, { text: t("ask_fail") }, message, "ask", 12_000);
   }
 }
 

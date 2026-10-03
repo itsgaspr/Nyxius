@@ -1,6 +1,6 @@
 import { extractNumber } from "../utils/jid.js";
 import { isReplyToBot } from "../utils/message.js";
-import { sendQuoted } from "../utils/feedback.js";
+import { sendQuoted, withTyping } from "../utils/feedback.js";
 
 const WORDS = [
   { word: "abacaxi", clue: "fruta tropical de casca espinhosa" },
@@ -220,6 +220,11 @@ export async function handleHangmanGuess(sock, ctx) {
   if (!/^[a-z]+$/.test(guess)) return false;
   if (guess.length !== 1 && guess.length !== game.word.length) return false;
 
+  return withTyping(sock, jid, () => applyHangmanGuess(sock, ctx, game, guess));
+}
+
+async function applyHangmanGuess(sock, ctx, game, guess) {
+  const { jid, senderId } = ctx;
   const number = extractNumber(senderId);
 
   if (guess.length === game.word.length) {

@@ -854,15 +854,22 @@ async function downloadViaYtDlp(query, known = {}) {
 async function firstResolved(promises) {
   return new Promise((resolve, reject) => {
     let pending = promises.length;
-    let lastErr = null;
+    const errors = [];
     for (const promise of promises) {
       Promise.resolve(promise).then(resolve, (err) => {
-        lastErr = err;
+        errors.push(err);
         pending -= 1;
-        if (pending === 0) reject(lastErr || new Error("download_failed"));
+        if (pending === 0) {
+          reject(errors.find(isYoutubeBotBlock) || errors.at(-1) || new Error("download_failed"));
+        }
       });
     }
   });
+}
+
+function isYoutubeBotBlock(err) {
+  const message = `${err?.stderr || ""}\n${err?.message || err || ""}`;
+  return /sign in to confirm|not a bot|automated queries|unusual traffic/i.test(message);
 }
 
 export async function downloadYoutubeAudio(query, known = null) {
@@ -905,9 +912,11 @@ export async function downloadYoutubeAudio(query, known = null) {
     }
     return await firstResolved(jobs);
   } catch (err) {
-    const msg = String(err?.stderr || err?.message || "");
     if (/too_long|too_large|not_found/.test(err?.message || "")) throw err;
-    if (/not a bot|Sign in to confirm/i.test(msg)) throw new Error("download_failed");
+    if (isYoutubeBotBlock(err)) {
+      console.warn("⚠️ YouTube blocked this server; configure YT_COOKIES or YT_COOKIES_FILE.");
+      throw new Error("youtube_blocked");
+    }
     throw err?.message ? err : new Error("download_failed");
   }
 }

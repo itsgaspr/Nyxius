@@ -729,7 +729,7 @@ async function downloadViaYtDlp(query, known = {}) {
   const common = await ytCommon([
     "--no-playlist",
     ...(ffmpeg ? ["--ffmpeg-location", ffmpeg] : []),
-  ]);
+  ], null);
   const webpageUrl = isYoutubeUrl(query) ? query.trim() : null;
 
   let title = known.title || "";
@@ -764,7 +764,7 @@ async function downloadViaYtDlp(query, known = {}) {
     "--max-filesize",
     "15m",
     "-f",
-    "140/139/251/250/249/bestaudio/best",
+    "bestaudio/best/18",
     "--print",
     "after_move:%(duration)s\t%(artist,creator,uploader|)s\t%(track,title)s",
     "--no-simulate",
@@ -775,39 +775,12 @@ async function downloadViaYtDlp(query, known = {}) {
   }
 
   let stdout = "";
-  try {
-    const result = await execFileAsync(bin, args, {
-      timeout: 180_000,
-      maxBuffer: 20 * 1024 * 1024,
-      windowsHide: true,
-    });
-    stdout = String(result.stdout || "");
-  } catch (err) {
-    const msg = String(err.stderr || err.message || "");
-    if (/Requested format is not available|format is not available|Only images are supported/i.test(msg)) {
-      console.warn("⚠️  yt-dlp found no formats with configured YouTube clients; retrying defaults");
-      const retry = await execFileAsync(
-        bin,
-        [
-          target,
-          "-o",
-          outTemplate,
-          "--max-filesize",
-          "15m",
-          "-f",
-          "bestaudio/best/18",
-          ...(await ytCommon(
-            ["--no-playlist", ...(ffmpeg ? ["--ffmpeg-location", ffmpeg] : [])],
-            null,
-          )),
-        ],
-        { timeout: 180_000, maxBuffer: 20 * 1024 * 1024, windowsHide: true },
-      );
-      stdout = String(retry.stdout || "");
-    } else {
-      throw err;
-    }
-  }
+  const result = await execFileAsync(bin, args, {
+    timeout: 180_000,
+    maxBuffer: 20 * 1024 * 1024,
+    windowsHide: true,
+  });
+  stdout = String(result.stdout || "");
   console.log("🎧 yt-dlp downloaded");
 
   const printLine = stdout

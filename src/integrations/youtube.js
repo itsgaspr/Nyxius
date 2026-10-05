@@ -316,13 +316,14 @@ function pickEntry(info) {
   return info;
 }
 
-async function ytCommon(extra = []) {
+async function ytCommon(extra = [], playerClients = "android,ios,web_safari,tv") {
   return [
     "--no-warnings",
     "--no-progress",
     "--no-check-certificates",
-    "--extractor-args",
-    "youtube:player_client=android,ios,web_safari,tv",
+    ...(playerClients
+      ? ["--extractor-args", `youtube:player_client=${playerClients}`]
+      : []),
     "--js-runtimes",
     "node",
     ...(await cookieArgs()),
@@ -784,6 +785,7 @@ async function downloadViaYtDlp(query, known = {}) {
   } catch (err) {
     const msg = String(err.stderr || err.message || "");
     if (/Requested format is not available|format is not available|Only images are supported/i.test(msg)) {
+      console.warn("⚠️  yt-dlp found no formats with configured YouTube clients; retrying defaults");
       const retry = await execFileAsync(
         bin,
         [
@@ -794,7 +796,10 @@ async function downloadViaYtDlp(query, known = {}) {
           "15m",
           "-f",
           "bestaudio/best/18",
-          ...common,
+          ...(await ytCommon(
+            ["--no-playlist", ...(ffmpeg ? ["--ffmpeg-location", ffmpeg] : [])],
+            null,
+          )),
         ],
         { timeout: 180_000, maxBuffer: 20 * 1024 * 1024, windowsHide: true },
       );

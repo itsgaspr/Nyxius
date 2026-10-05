@@ -270,14 +270,19 @@ async function bufferToWhatsAppAudio(buffer, extHint = "m4a", meta = {}) {
 }
 
 async function cookieArgs() {
-  if (process.env.YT_COOKIES_FILE) return ["--cookies", process.env.YT_COOKIES_FILE];
+  const cookieFile = process.env.YT_COOKIES_FILE;
   const raw = process.env.YT_COOKIES;
-  if (!raw) return [];
+  if (!cookieFile && !raw) return [];
   if (!cookieFilePromise) {
     cookieFilePromise = (async () => {
       const dest = path.join(os.tmpdir(), "nyxius-yt-cookies.txt");
-      const text = raw.includes("\\n") ? raw.replace(/\\n/g, "\n") : raw;
-      await fs.writeFile(dest, text.endsWith("\n") ? text : `${text}\n`, { mode: 0o600 });
+      if (cookieFile) {
+        await fs.copyFile(cookieFile, dest);
+        await fs.chmod(dest, 0o600);
+      } else {
+        const text = raw.includes("\\n") ? raw.replace(/\\n/g, "\n") : raw;
+        await fs.writeFile(dest, text.endsWith("\n") ? text : `${text}\n`, { mode: 0o600 });
+      }
       return dest;
     })();
   }

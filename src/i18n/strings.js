@@ -152,6 +152,26 @@ export const STRINGS = {
     setmode_set: "🎭 Trivia agora em modo *{mode}*.",
     trivia_fun_title: "🤪",
     trivia_reply_tf: "👇 Responde com *A/B* (ou V/F).",
+    trivia_vs_start:
+      "🧠 *TRIVIA VS* · {mode}\n@{a} vs @{b}\n{n} perguntas cada, todas diferentes.\n1 minuto por resposta — se alguém dorme, ganha quem tem mais acertos.",
+    trivia_vs_turn: "🎯 @{user} — pergunta *{n}/{total}*. Só tu.",
+    trivia_vs_clock: "⏰ Tens *1 min*. Responde esta mensagem.",
+    trivia_vs_score: "📊 @{a} *{sa}*  —  *{sb}* @{b}",
+    trivia_vs_wait: "⏳ Calma, ainda não é a tua vez.",
+    trivia_vs_timeout: "⏰ @{user} ficou sem tempo.",
+    trivia_vs_done: "🏁 *Acabou — e foi um prazer.*\nObrigado por terem jogado comigo.",
+    trivia_vs_win:
+      "🏆 *@{user}, a vitória é tua: {sa}–{sb}.*\n\nJogaste lindamente. Cada acerto teve a tua cara, e eu fiquei mesmo contente por ti.\n@{loser}, tu também estiveste enorme — coragem, graça e vontade. A revanche já te espera, e vai ser boa. 💛",
+    trivia_vs_draw:
+      "🤝 *Empate {sa}–{sb}.* Que coisa bonita.\n\n@{a} e @{b}, vocês foram tão bons que o placar não conseguiu escolher. Fico feliz de ter visto isto. Até à próxima, com o coração quente. 💛",
+    trivia_vs_self: "🪞 Trivia contra ti mesmo? Não cola.",
+    trivia_vs_bot: "😎 Eu passo. Desafia um humano!",
+    trivia_vs_busy: "🧠 Já tem trivia a correr neste grupo. `.tr parar` se quiseres limpar.",
+    trivia_vs_none: "🤷 Não tem trivia vs pendente.",
+    trivia_vs_stopped: "🛑 Trivia vs cancelado.",
+    trivia_vs_admin_stop: "🫡 Só admin ou os dois jogadores podem cancelar.",
+    trivia_vs_need_rival:
+      "👀 Pra vs, menciona alguém ou responde à mensagem: `.tr @user 5` ou responde e manda `.tr 5`.",
     afk_usage: "`.afk motivo` (obrigatório).\n`.afk off` quando voltares.",
     afk_none: "🙂 Não estás AFK. Estás bem presente!",
     afk_set: "💤 @{user} sumiu um pouco: *{reason}*",
@@ -316,6 +336,26 @@ export const STRINGS = {
     setmode_set: "🎭 Trivia is now *{mode}* mode.",
     trivia_fun_title: "🤪",
     trivia_reply_tf: "👇 Reply with *A/B* (or T/F).",
+    trivia_vs_start:
+      "🧠 *TRIVIA VS* · {mode}\n@{a} vs @{b}\n{n} questions each, all different.\n1 minute per answer — if someone stalls, whoever has more hits wins.",
+    trivia_vs_turn: "🎯 @{user} — question *{n}/{total}*. That's you.",
+    trivia_vs_clock: "⏰ You've got *1 min*. Reply to this message.",
+    trivia_vs_score: "📊 @{a} *{sa}*  —  *{sb}* @{b}",
+    trivia_vs_wait: "⏳ Easy — not your turn yet.",
+    trivia_vs_timeout: "⏰ @{user} ran out of time.",
+    trivia_vs_done: "🏁 *That's a wrap — and it was a joy.*\nThanks for playing with me.",
+    trivia_vs_win:
+      "🏆 *@{user}, the win is yours: {sa}–{sb}.*\n\nYou played beautifully. Every hit had your name on it, and I'm genuinely glad for you.\n@{loser}, you were wonderful too — brave, funny, all in. The rematch already has your name on it. 💛",
+    trivia_vs_draw:
+      "🤝 *Draw {sa}–{sb}.* What a lovely tie.\n\n@{a} and @{b}, you were both so good the scoreboard refused to pick a side. I'm happy I got to watch. Until next time, with a warm heart. 💛",
+    trivia_vs_self: "🪞 Trivia against yourself? Nah.",
+    trivia_vs_bot: "😎 I'll pass. Challenge a human!",
+    trivia_vs_busy: "🧠 Trivia is already running here. `.tr stop` to clear it.",
+    trivia_vs_none: "🤷 No trivia vs pending.",
+    trivia_vs_stopped: "🛑 Trivia vs cancelled.",
+    trivia_vs_admin_stop: "🫡 Only an admin or the two players can cancel.",
+    trivia_vs_need_rival:
+      "👀 For vs, mention someone or reply to them: `.tr @user 5` or reply and send `.tr 5`.",
     afk_usage: "`.afk reason` (required).\n`.afk off` when you're back.",
     afk_none: "🙂 You're not AFK. Very present!",
     afk_set: "💤 @{user} stepped away: *{reason}*",

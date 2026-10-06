@@ -97,24 +97,19 @@ function normalizeTrivia(parsed, fallbackAnswer, lang = "pt") {
 }
 
 function funSystemPrompt(language) {
-  return `You generate FUN MODE trivia questions in ${language}.
+  return `You are a very funny WhatsApp trivia host. You generate FUN MODE questions in ${language}.
+
+HUMOR — this is mandatory, and there must be a lot of it
+- Be genuinely funny: wordplay, absurd comparisons, comic timing, a wink in the wording.
+- Wrong options must be specific and laugh-out-loud silly, not boring near-misses.
+- The "funny" field is a short comedy bit (2-4 sentences): state the true fact clearly, then land a real punchline. A mild smile is not enough.
+- Clean humor only. No insults at the players, no slurs, no sexual content, no jokes about death, illness, tragedy, or family trauma.
+- Facts must be real. If you are not sure, pick a fact you know is true. Never invent the correct answer.
 
 STYLE
-- Write a real QUESTION people can answer (who/what/which/how/true-false), not a "did you know" fun fact.
+- Still a real QUESTION (who/what/which/how/true-false), short enough for a group chat.
 - Never start with "Did you know", "Sabias que", "Você sabia", "Curiosidade:", or similar.
-- Keep questions short, simple, curious, and fun — easy to read in a group chat.
-- Tone: witty friend. Clean and warm. Occasional light jokes are good.
-- No insults, no dark humor, no jokes about death, illness, family trauma, or relationships.
-- Facts must be real and verifiable. Skip myths, or make them clearly myth-vs-truth.
-
-OPTIONS
-- Wrong options should be funny/absurd on purpose, but tempting enough that someone might pick them.
-
-EXPLANATION ("funny" field)
-- 2 to 4 short sentences.
-- First explain the real fact clearly.
-- Then add humor: a light joke or playful reaction is welcome (not every time forced, but often).
-- Do not only joke — the fact must stay clear.
+- Sound like a witty friend who cannot help being funny, not like a textbook.
 
 Output one compact JSON object only. No markdown.`;
 }
@@ -128,19 +123,22 @@ function funUserPrompt({ topic, language, answerPosition, format, avoidSection }
   const forcedAnswer =
     format === "tf" ? (answerPosition === "B" ? "B" : "A") : answerPosition;
 
-  return `Create ONE simple, curious trivia QUESTION about: ${topic}
+  return `Create ONE funny, curious trivia QUESTION about: ${topic}
 Language: ${language}
 ${formatHint}
 ${avoidSection}
 
-Good question examples (style only):
-- "Which animal can sleep while standing up?"
-- "In which country was it once illegal to own only one guinea pig?"
-- "True or false: octopuses have three hearts."
+The question itself should already be playful. The wrong answers should make people laugh. The "funny" field must explain the real fact AND joke hard.
+
+Good question vibe (style only, invent a new one):
+- "Which animal files 'standing nap' as a lifestyle and not a bit?"
+- "Which country once said a lone guinea pig was a crime against guinea pigs?"
+- "True or false: an octopus packs three hearts, which is two more than most group chats."
 
 Bad (do NOT do this):
 - "Did you know that octopuses have three hearts?"
 - "Sabias que o polvo tem três corações?"
+- Dry textbook wording, or wrong options that are just slightly incorrect dates.
 
 Return ONLY valid JSON:
 {"format":"${format}","question":"...","options":{"A":"...","B":"...","C":"...","D":"..."},"answer":"${forcedAnswer}","funny":"..."}`;
@@ -180,21 +178,23 @@ export async function generateTriviaQuestion(lang = "pt", mode = "normal") {
           : [
               {
                 role: "system",
-                content:
-                  "You generate trivia questions. Output one compact JSON object only. No markdown, no prose.",
+                content: `You generate trivia questions in a warm, very funny voice. Output one compact JSON object only. No markdown, no prose.
+Facts must be real. Humor is required: a playful question, silly-but-tempting wrong options, and a "funny" field of 2-3 sentences that explains the fact and then lands a joke.
+Clean humor only — no insults, slurs, sexual content, or jokes about death, illness, or tragedy.
+Never start with "Did you know" / "Sabias que" / "Você sabia".`,
               },
               {
                 role: "user",
-                content: `Create one short trivia question about ${topic}.
-Language for question and options: ${language}.
+                content: `Create one short, funny trivia question about ${topic}.
+Language for question, options, and the joke: ${language}.
 Correct option letter must be "${answerPosition}".
 ${avoidSection}
 Return ONLY valid JSON:
-{"format":"mc","question":"...","options":{"A":"...","B":"...","C":"...","D":"..."},"answer":"${answerPosition}","funny":""}`,
+{"format":"mc","question":"...","options":{"A":"...","B":"...","C":"...","D":"..."},"answer":"${answerPosition}","funny":"..."}`,
               },
             ],
         model: GROQ_MODEL,
-        temperature: fun ? 0.85 : 0.6,
+        temperature: fun ? 0.95 : 0.85,
         max_tokens: 1600,
         reasoning_effort: "low",
         seed: Math.floor(Math.random() * 1000000),
@@ -289,7 +289,7 @@ export async function explainTriviaAnswer(
       },
       {
         role: "user",
-        content: `A trivia player just got this question right. Explain briefly why the correct answer is right, in ${language}. Be clear and educational, like a short .ask answer (3-6 sentences max). Do not invent a different correct option.
+        content: `A trivia player just answered. Explain why the correct option is right, in ${language}. Be clear first, then very funny: a real joke or a playful image, not a polite smile. 3-5 short sentences. Do not invent a different correct option.
 
 Question: ${question}
 Options:
@@ -298,13 +298,56 @@ Correct answer: ${answer}) ${optionText}`,
       },
     ],
     model: GROQ_MODEL,
-    temperature: 0.6,
+    temperature: 0.85,
   });
 
   return (
     completion.choices[0]?.message?.content ||
     "Unable to generate explanation."
   );
+}
+
+export async function celebrateTriviaMatch({
+  lang = "pt",
+  draw = false,
+  winnerNumber = "",
+  loserNumber = "",
+  aNumber = "",
+  bNumber = "",
+  scoreWinner = 0,
+  scoreLoser = 0,
+} = {}) {
+  const language = lang === "en" ? "English" : "Brazilian Portuguese";
+  const who = draw
+    ? `It is a draw between @${aNumber} and @${bNumber}, score ${scoreWinner}–${scoreLoser}.`
+    : `@${winnerNumber} won ${scoreWinner}–${scoreLoser} against @${loserNumber}.`;
+
+  const completion = await groq.chat.completions.create({
+    messages: [
+      {
+        role: "system",
+        content: `You write the closing message of a friendly WhatsApp trivia match, in ${language}.
+Tone: very warm, affectionate, proud, and lightly funny — like a friend who is genuinely happy for both people.
+Celebrate hard. Be kind to whoever did not win. No mockery, no "better luck loser", no cold sports-announcer voice.
+3 to 6 short lines. Use *single* asterisks for emphasis. Never use **double** asterisks or markdown headings.
+Mention both people with the exact @numbers given. Include the score.
+Plain text only. No JSON.`,
+      },
+      { role: "user", content: who },
+    ],
+    model: GROQ_MODEL,
+    temperature: 0.9,
+    max_tokens: 400,
+    reasoning_effort: "low",
+  });
+
+  const text = String(completion.choices[0]?.message?.content || "")
+    .replace(/```/g, "")
+    .trim();
+  if (text.length < 40 || text.length > 700) return "";
+  const needed = draw ? [aNumber, bNumber] : [winnerNumber, loserNumber];
+  if (needed.some((n) => n && !text.includes(n))) return "";
+  return text;
 }
 
 const recentTod = [];

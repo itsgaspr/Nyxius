@@ -184,8 +184,8 @@ export const COMMANDS = {
     aliases: ["trivia", "tr", "quiz"],
     primary: { pt: "trivia", en: "trivia" },
     abbr: ["tr"],
-    desc: { pt: "Quiz rápido — responde A-D", en: "Quick quiz — reply A-D" },
-    usage: { pt: ".trivia / .tr", en: ".trivia / .tr" },
+    desc: { pt: "Quiz solo, ou vs: .tr @alguém 5", en: "Solo quiz, or vs: .tr @someone 5" },
+    usage: { pt: ".tr  |  .tr @user 5", en: ".tr  |  .tr @user 5" },
   },
   forca: {
     category: "jogos",

@@ -4,12 +4,6 @@ import fs from "fs/promises";
 import os from "os";
 import path from "path";
 import { randomUUID } from "crypto";
-import { fileURLToPath } from "url";
-
-const AVATAR_PATH = path.join(
-  path.dirname(fileURLToPath(import.meta.url)),
-  "../../assets/nyxius.png",
-);
 
 const execFileAsync = promisify(execFile);
 
@@ -152,54 +146,7 @@ function scrubMeta(value, fallback) {
   );
 }
 
-async function fetchCoverArt(videoId) {
-  if (!videoId) return null;
-  const urls = [
-    `https://i.ytimg.com/vi/${videoId}/maxresdefault.jpg`,
-    `https://i.ytimg.com/vi/${videoId}/sddefault.jpg`,
-    `https://i.ytimg.com/vi/${videoId}/hqdefault.jpg`,
-  ];
-  for (const url of urls) {
-    try {
-      const res = await fetch(url, {
-        redirect: "follow",
-        signal: AbortSignal.timeout(10_000),
-      });
-      if (!res.ok) continue;
-      const buf = Buffer.from(await res.arrayBuffer());
-      // YouTube sometimes returns a tiny grey placeholder for missing maxres.
-      if (buf.length < 8_000) continue;
-      const dest = path.join(os.tmpdir(), `nyxius-cover-${randomUUID()}.jpg`);
-      await fs.writeFile(dest, buf);
-      return dest;
-    } catch {
-      // try next size
-    }
-  }
-  return null;
-}
-
-async function resolveCoverPath(meta = {}) {
-  if (meta.coverPath) {
-    try {
-      await fs.access(meta.coverPath);
-      return { path: meta.coverPath, cleanup: false };
-    } catch {
-      // fall through
-    }
-  }
-  const videoId = meta.videoId || videoIdFromUrl(meta.url);
-  const fetched = await fetchCoverArt(videoId);
-  if (fetched) return { path: fetched, cleanup: true };
-  try {
-    await fs.access(AVATAR_PATH);
-    return { path: AVATAR_PATH, cleanup: false };
-  } catch {
-    return null;
-  }
-}
-
-/** Encode to MP3 with ID3 tags + embedded cover art. */
+/** Encode to MP3 with ID3 tags. */
 async function remuxForWhatsApp(inputPath, meta = {}) {
   const ffmpeg = await ensureFfmpeg();
   const id = randomUUID();
@@ -207,32 +154,17 @@ async function remuxForWhatsApp(inputPath, meta = {}) {
   const title = scrubMeta(meta.title, "Nyxius");
   const artist = scrubMeta(meta.artist, "Nyxius");
   const album = scrubMeta(meta.album, "Nyxius");
-  const cover = await resolveCoverPath(meta);
 
-  const args = ["-y", "-i", inputPath];
-  if (cover?.path) args.push("-i", cover.path);
-  if (cover?.path) {
-    args.push(
-      "-map",
-      "0:a:0",
-      "-map",
-      "1:0",
-      "-c:a",
-      "libmp3lame",
-      "-b:a",
-      "192k",
-      "-c:v",
-      "mjpeg",
-      "-metadata:s:v",
-      "title=Album cover",
-      "-metadata:s:v",
-      "comment=Cover (front)",
-      "-disposition:v:0",
-      "attached_pic",
-    );
-  } else {
-    args.push("-vn", "-c:a", "libmp3lame", "-b:a", "192k");
-  }
+  const args = [
+    "-y",
+    "-i",
+    inputPath,
+    "-vn",
+    "-c:a",
+    "libmp3lame",
+    "-b:a",
+    "128k",
+  ];
   args.push(
     "-metadata",
     `title=${title}`,
@@ -245,11 +177,7 @@ async function remuxForWhatsApp(inputPath, meta = {}) {
     outPath,
   );
 
-  try {
-    await execFileAsync(ffmpeg, args, { timeout: 180_000, windowsHide: true });
-  } finally {
-    if (cover?.cleanup) await fs.unlink(cover.path).catch(() => {});
-  }
+  await execFileAsync(ffmpeg, args, { timeout: 180_000, windowsHide: true });
 
   const buffer = await fs.readFile(outPath);
   await fs.unlink(outPath).catch(() => {});
@@ -709,7 +637,6 @@ async function downloadViaInnertube(videoId, fallback) {
     title,
     artist,
     album: artist || "Nyxius",
-    videoId,
   });
   return audioResult({
     buffer: fixed.buffer,
@@ -805,7 +732,6 @@ async function downloadViaYtDlp(query, known = {}) {
     throw new Error("too_large");
   }
   const finalTitle = title || target;
-  const videoId = videoIdFromUrl(webpageUrl || target);
   let buffer;
   let mimetype;
   try {
@@ -813,8 +739,6 @@ async function downloadViaYtDlp(query, known = {}) {
       title: finalTitle,
       artist,
       album: artist || "Nyxius",
-      videoId,
-      url: webpageUrl || target,
     });
     buffer = fixed.buffer;
     mimetype = fixed.mimetype;
@@ -876,7 +800,20 @@ export async function downloadYoutubeAudio(query, known = null) {
 
   try {
     if (cookies.length) {
-      return await downloadViaYtDlp(url, fallback);
+      try {
+        return await downloadViaYtDlp(url, fallback);
+      } catch (err) {
+        if (/too_long|too_large|not_found/.test(err?.message || "") || !videoId) throw err;
+        console.warn("⚠️  yt-dlp failed; trying YouTube player fallback:", err.message);
+        try {
+          const audio = await downloadViaInnertube(videoId, fallback);
+          console.log("🎧 innertube player audio fallback");
+          return audio;
+        } catch (fallbackErr) {
+          console.warn("⚠️  YouTube player fallback failed:", fallbackErr.message);
+          throw err;
+        }
+      }
     }
 
     // Race: yt-dlp wins locally; innertube sometimes wins on datacenter IPs.

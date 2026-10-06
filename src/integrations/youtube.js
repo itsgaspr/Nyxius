@@ -32,9 +32,20 @@ const WEB_CLIENT = {
   gl: "US",
 };
 
-const DEFAULT_CLIENTS = "android,ios,web_safari,tv";
-// ios ignores browser cookies; tv can invalidate the cookie session.
-const COOKIE_CLIENTS = "web_safari,mweb,web";
+// As of 2026-10, android still returns a playable format. tv and web_safari
+// answer with the bot check, and browser cookies make that check worse.
+const DEFAULT_CLIENTS = "android";
+const ANON_CLIENTS = "android,mweb";
+const COOKIE_CLIENTS = "web_safari";
+const TV_CLIENT = {
+  clientName: "TVHTML5",
+  clientVersion: "7.20260707.07.00",
+  clientId: "7",
+  hl: "en",
+  gl: "US",
+  userAgent:
+    "Mozilla/5.0 (ChromiumStylePlatform) Cobalt/25.lts.30.1034943-gold (unlike Gecko), Unknown_TV_Unknown_0/Unknown (Unknown, Unknown)",
+};
 
 let ytDlpPath = null;
 let ensurePromise = null;
@@ -436,12 +447,12 @@ function pickEntry(info) {
   return info;
 }
 
-async function ytCommon(extra = [], playerClients = DEFAULT_CLIENTS) {
-  const cookies = await cookieArgs();
-  let clients = playerClients;
-  if (cookies.length) {
-    clients = !playerClients || playerClients === DEFAULT_CLIENTS ? COOKIE_CLIENTS : playerClients;
-  }
+async function ytCommon(extra = [], playerClients = DEFAULT_CLIENTS, useCookies = true) {
+  let clients = playerClients || DEFAULT_CLIENTS;
+  // Browser cookies only go to web clients. tv invalidates the session, and
+  // android ignores them — sending them there is what triggers the bot wall.
+  const cookieClient = clients.split(",").every((part) => ["web_safari", "mweb", "web"].includes(part));
+  const cookies = useCookies && cookieClient ? await cookieArgs() : [];
   return [
     "--no-warnings",
     "--no-progress",
@@ -613,17 +624,21 @@ function uniqueTracks(list, limit) {
 
 async function innertubePost(url, client, body) {
   const android = client.clientName === "ANDROID";
+  const contextClient = { ...client };
+  delete contextClient.clientId;
   const res = await fetch(url, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
-      "User-Agent": android
-        ? `com.google.android.youtube/${client.clientVersion} (Linux; U; Android 15) gzip`
-        : "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36",
-      "X-YouTube-Client-Name": android ? "3" : "1",
+      "User-Agent":
+        client.userAgent ||
+        (android
+          ? `com.google.android.youtube/${client.clientVersion} (Linux; U; Android 15) gzip`
+          : "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36"),
+      "X-YouTube-Client-Name": client.clientId || (android ? "3" : "1"),
       "X-YouTube-Client-Version": client.clientVersion,
     },
-    body: JSON.stringify({ context: { client }, ...body }),
+    body: JSON.stringify({ context: { client: contextClient }, ...body }),
     signal: AbortSignal.timeout(20_000),
   });
   if (!res.ok) throw new Error(`innertube_${res.status}`);
@@ -805,8 +820,8 @@ function audioResult({ buffer, mimetype, title, artist, duration, url, cover = n
   return { buffer, mimetype, title, artist, duration, url, cover };
 }
 
-async function downloadViaInnertube(videoId, fallback) {
-  const data = await innertubePost(INNERTUBE_PLAYER, ANDROID_CLIENT, {
+async function downloadViaInnertubeClient(videoId, fallback, client) {
+  const data = await innertubePost(INNERTUBE_PLAYER, client, {
     videoId,
     contentCheckOk: true,
     racyCheckOk: true,
@@ -825,7 +840,9 @@ async function downloadViaInnertube(videoId, fallback) {
   if (duration > MAX_DURATION) throw new Error("too_long");
   const coverPromise = fetchCoverJpeg(videoId);
   const raw = await downloadUrl(format.url, {
-    "User-Agent": `com.google.android.youtube/${ANDROID_CLIENT.clientVersion} (Linux; U; Android 15) gzip`,
+    "User-Agent":
+      client.userAgent ||
+      `com.google.android.youtube/${ANDROID_CLIENT.clientVersion} (Linux; U; Android 15) gzip`,
   });
   const ext = /webm|opus/i.test(String(format.mimeType || "")) ? "webm" : "m4a";
   const title = details.title || fallback.title;
@@ -848,7 +865,21 @@ async function downloadViaInnertube(videoId, fallback) {
   });
 }
 
-async function downloadViaYtDlp(query, known = {}, clientsOverride) {
+async function downloadViaInnertube(videoId, fallback) {
+  let lastErr;
+  for (const client of [ANDROID_CLIENT, TV_CLIENT]) {
+    try {
+      return await downloadViaInnertubeClient(videoId, fallback, client);
+    } catch (err) {
+      if (/too_long|too_large/.test(err?.message || "")) throw err;
+      lastErr = err;
+      console.warn(`⚠️  innertube ${client.clientName} failed:`, err.message);
+    }
+  }
+  throw lastErr || new Error("player_blocked");
+}
+
+async function downloadViaYtDlp(query, known = {}, { clients = null, useCookies = true } = {}) {
   const bin = await ensureYtDlp();
   const ffmpeg = await ensureFfmpeg().catch(() => null);
   const id = randomUUID();
@@ -866,7 +897,8 @@ async function downloadViaYtDlp(query, known = {}, clientsOverride) {
   try {
     common = await ytCommon(
       ["--no-playlist", ...(ffmpeg ? ["--ffmpeg-location", ffmpeg] : [])],
-      clientsOverride == null ? null : clientsOverride,
+      clients,
+      useCookies,
     );
 
     if (!webpageUrl) {
@@ -975,22 +1007,6 @@ async function downloadViaYtDlp(query, known = {}, clientsOverride) {
   }
 }
 
-async function firstResolved(promises) {
-  return new Promise((resolve, reject) => {
-    let pending = promises.length;
-    const errors = [];
-    for (const promise of promises) {
-      Promise.resolve(promise).then(resolve, (err) => {
-        errors.push(err);
-        pending -= 1;
-        if (pending === 0) {
-          reject(errors.find(isYoutubeBotBlock) || errors.at(-1) || new Error("download_failed"));
-        }
-      });
-    }
-  });
-}
-
 function isYoutubeBotBlock(err) {
   const message = `${err?.stderr || ""}\n${err?.message || err || ""}`;
   return /sign in to confirm|not a bot|automated queries|unusual traffic/i.test(message);
@@ -1014,55 +1030,60 @@ export async function downloadYoutubeAudio(query, known = null) {
 
   const videoId = videoIdFromUrl(url);
   const hasCookies = Boolean(await ensureCookieText());
+  const permanent = (err) => /too_long|too_large|not_found/.test(err?.message || "");
 
   try {
+    let lastErr;
+    try {
+      // Android, without the saved browser cookies. Those cookies are tied to
+      // another IP and the web clients that accept them are the ones getting blocked.
+      const audio = await downloadViaYtDlp(url, fallback, {
+        clients: ANON_CLIENTS,
+        useCookies: false,
+      });
+      console.log("🎧 yt-dlp audio (android)");
+      return audio;
+    } catch (err) {
+      if (permanent(err)) throw err;
+      lastErr = err;
+      console.warn("⚠️  yt-dlp android failed:", ytStderr(err) || err.message);
+    }
+
     if (hasCookies) {
       try {
-        return await downloadViaYtDlp(url, fallback);
+        const audio = await downloadViaYtDlp(url, fallback, {
+          clients: COOKIE_CLIENTS,
+          useCookies: true,
+        });
+        console.log("🎧 yt-dlp audio (cookies)");
+        return audio;
       } catch (err) {
-        if (/too_long|too_large|not_found/.test(err?.message || "")) throw err;
-        if (isYoutubeBotBlock(err)) {
-          console.warn("⚠️  yt-dlp cookie client blocked; retrying mweb");
-          try {
-            return await downloadViaYtDlp(url, fallback, "mweb,web");
-          } catch (retryErr) {
-            console.warn("⚠️  yt-dlp cookie retry failed:", ytStderr(retryErr) || retryErr.message);
-            err = retryErr;
-          }
-        }
-        if (!videoId) throw err;
-        console.warn("⚠️  yt-dlp failed; trying YouTube player fallback:", ytStderr(err) || err.message);
-        try {
-          const audio = await downloadViaInnertube(videoId, fallback);
-          console.log("🎧 innertube player audio fallback");
-          return audio;
-        } catch (fallbackErr) {
-          console.warn("⚠️  YouTube player fallback failed:", fallbackErr.message);
-          throw err;
-        }
+        if (permanent(err)) throw err;
+        console.warn("⚠️  yt-dlp cookies failed:", ytStderr(err) || err.message);
+        if (isYoutubeBotBlock(err)) lastErr = err;
       }
     }
 
-    // Race: yt-dlp wins locally; innertube sometimes wins on datacenter IPs.
-    // Dead Piped/Invidious mirrors are skipped — they only added 10–40s of delay.
-    const jobs = [downloadViaYtDlp(url, fallback).then((audio) => {
-      console.log("🎧 yt-dlp audio");
+    if (!videoId) throw lastErr || new Error("download_failed");
+    console.warn("⚠️  yt-dlp failed; trying YouTube player fallback");
+    try {
+      const audio = await downloadViaInnertube(videoId, fallback);
+      console.log("🎧 innertube player audio fallback");
       return audio;
-    })];
-    if (videoId) {
-      jobs.push(
-        downloadViaInnertube(videoId, fallback).then((audio) => {
-          console.log("🎧 innertube player audio");
-          return audio;
-        }),
-      );
+    } catch (fallbackErr) {
+      console.warn("⚠️  YouTube player fallback failed:", fallbackErr.message);
+      if (isYoutubeBotBlock(lastErr)) throw lastErr;
+      throw fallbackErr;
     }
-    return await firstResolved(jobs);
   } catch (err) {
-    if (/too_long|too_large|not_found/.test(err?.message || "")) throw err;
-    if (isYoutubeBotBlock(err)) {
-      console.warn("⚠️ YouTube blocked this server; configure YT_COOKIES or YT_COOKIES_FILE.");
-      throw new Error("youtube_blocked");
+    if (permanent(err)) throw err;
+    if (isYoutubeBotBlock(err) || /^innertube_40[03]$/.test(err?.message || "") || err?.message === "player_blocked") {
+      console.warn(
+        hasCookies
+          ? "⚠️ YouTube rejected this server and the saved cookies."
+          : "⚠️ YouTube blocked this server; configure YT_COOKIES or YT_COOKIES_FILE.",
+      );
+      throw new Error(hasCookies ? "youtube_cookies_rejected" : "youtube_blocked");
     }
     throw err?.message ? err : new Error("download_failed");
   }

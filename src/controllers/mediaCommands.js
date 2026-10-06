@@ -42,6 +42,7 @@ function playErrorText(t, err) {
     yt_dlp_missing: t("play_yt_missing"),
     "yt-dlp_missing": t("play_yt_missing"),
     youtube_blocked: t("play_youtube_blocked"),
+    youtube_cookies_rejected: t("play_youtube_cookies_rejected"),
     not_found: t("play_not_found"),
     too_long: t("play_too_long"),
     too_large: t("play_too_large"),

@@ -1,3 +1,10 @@
+export function groupJidOf(key) {
+  if (!key) return null;
+  if (typeof key.remoteJid === "string" && key.remoteJid.endsWith("@g.us")) return key.remoteJid;
+  if (typeof key.remoteJidAlt === "string" && key.remoteJidAlt.endsWith("@g.us")) return key.remoteJidAlt;
+  return null;
+}
+
 export function toJid(value) {
   if (!value) return null;
   if (typeof value === "string") return value;

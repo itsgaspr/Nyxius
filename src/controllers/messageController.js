@@ -1,6 +1,7 @@
 import { explainTopic } from "../integrations/groq.js";
 import {
   extractNumber,
+  groupJidOf,
   sameUser,
   findParticipant,
   isPrivilegedSender,
@@ -84,8 +85,9 @@ export async function handleMessage(sock, message) {
     if (message.key.fromMe) return;
     if (message.key.remoteJid === "status@broadcast") return;
 
-    const jid = message.key.remoteJid;
-    if (!jid?.endsWith("@g.us")) return;
+    const jid = groupJidOf(message.key);
+    if (!jid) return;
+    if (message.key.remoteJid !== jid) message.key.remoteJid = jid;
 
     const text = getMessageText(message);
 
@@ -93,8 +95,8 @@ export async function handleMessage(sock, message) {
     try {
       groupMeta = await getGroupMeta(sock, jid);
     } catch (err) {
-      console.error("❌ Metadata error:", err);
-      return;
+      console.error("❌ Metadata error:", jid, err.message);
+      groupMeta = { id: jid, subject: "", participants: [] };
     }
 
     const settings = await getSettings(jid);

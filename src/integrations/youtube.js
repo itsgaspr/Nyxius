@@ -4,6 +4,7 @@ import fs from "fs/promises";
 import os from "os";
 import path from "path";
 import { randomUUID } from "crypto";
+import sharp from "sharp";
 
 const execFileAsync = promisify(execFile);
 
@@ -31,11 +32,15 @@ const WEB_CLIENT = {
   gl: "US",
 };
 
+const DEFAULT_CLIENTS = "android,ios,web_safari,tv";
+// ios ignores browser cookies; tv can invalidate the cookie session.
+const COOKIE_CLIENTS = "web_safari,mweb,web";
+
 let ytDlpPath = null;
 let ensurePromise = null;
 let ffmpegPath = null;
 let ffmpegPromise = null;
-let cookieFilePromise = null;
+let cookieTextPromise = null;
 
 function mimetypeFrom(nameOrType) {
   const v = String(nameOrType || "").toLowerCase();
@@ -146,25 +151,34 @@ function scrubMeta(value, fallback) {
   );
 }
 
-/** Encode to MP3 with ID3 tags. */
-async function remuxForWhatsApp(inputPath, meta = {}) {
+async function encodeMp3(inputPath, meta = {}) {
   const ffmpeg = await ensureFfmpeg();
   const id = randomUUID();
   const outPath = path.join(os.tmpdir(), `nyxius-wa-${id}.mp3`);
+  const coverPath = meta.cover ? path.join(os.tmpdir(), `nyxius-cover-${id}.jpg`) : null;
   const title = scrubMeta(meta.title, "Nyxius");
   const artist = scrubMeta(meta.artist, "Nyxius");
   const album = scrubMeta(meta.album, "Nyxius");
+  if (coverPath) await fs.writeFile(coverPath, meta.cover);
 
-  const args = [
-    "-y",
-    "-i",
-    inputPath,
-    "-vn",
-    "-c:a",
-    "libmp3lame",
-    "-b:a",
-    "128k",
-  ];
+  const args = ["-y", "-i", inputPath];
+  if (coverPath) {
+    args.push(
+      "-i",
+      coverPath,
+      "-map",
+      "0:a:0",
+      "-map",
+      "1:0",
+      "-c:v",
+      "copy",
+      "-disposition:v:0",
+      "attached_pic",
+    );
+  } else {
+    args.push("-vn");
+  }
+  args.push("-c:a", "libmp3lame", "-b:a", "128k");
   args.push(
     "-metadata",
     `title=${title}`,
@@ -174,16 +188,73 @@ async function remuxForWhatsApp(inputPath, meta = {}) {
     `album=${album}`,
     "-id3v2_version",
     "3",
-    outPath,
   );
+  if (coverPath) {
+    args.push(
+      "-metadata:s:v",
+      "title=Album cover",
+      "-metadata:s:v",
+      "comment=Cover (front)",
+    );
+  }
+  args.push(outPath);
 
-  await execFileAsync(ffmpeg, args, { timeout: 180_000, windowsHide: true });
+  try {
+    await execFileAsync(ffmpeg, args, { timeout: 180_000, windowsHide: true });
+    const buffer = await fs.readFile(outPath);
+    if (!buffer.length) throw new Error("download_failed");
+    if (buffer.length > MAX_SIZE_BYTES) throw new Error("too_large");
+    return { buffer, mimetype: "audio/mpeg" };
+  } finally {
+    await fs.unlink(outPath).catch(() => {});
+    if (coverPath) await fs.unlink(coverPath).catch(() => {});
+  }
+}
 
-  const buffer = await fs.readFile(outPath);
-  await fs.unlink(outPath).catch(() => {});
-  if (!buffer.length) throw new Error("download_failed");
-  if (buffer.length > MAX_SIZE_BYTES) throw new Error("too_large");
-  return { buffer, mimetype: "audio/mpeg" };
+/** Encode to MP3 with ID3 tags and, when we have one, the album cover. */
+async function remuxForWhatsApp(inputPath, meta = {}) {
+  try {
+    return await encodeMp3(inputPath, meta);
+  } catch (err) {
+    if (!meta.cover || err?.message === "too_large") throw err;
+    console.warn("⚠️  cover embed failed, sending audio without it:", err.message);
+    return encodeMp3(inputPath, { ...meta, cover: null });
+  }
+}
+
+async function fetchCoverJpeg(videoId) {
+  if (!videoId || !/^[\w-]{11}$/.test(videoId)) return null;
+  const urls = [
+    `https://i.ytimg.com/vi/${videoId}/maxresdefault.jpg`,
+    `https://i.ytimg.com/vi/${videoId}/sddefault.jpg`,
+    `https://i.ytimg.com/vi/${videoId}/hqdefault.jpg`,
+  ];
+  for (const url of urls) {
+    try {
+      const res = await fetch(url, { signal: AbortSignal.timeout(12_000) });
+      if (!res.ok) continue;
+      const raw = Buffer.from(await res.arrayBuffer());
+      if (raw.length < 1500) continue;
+      const meta = await sharp(raw).metadata();
+      if ((meta.width || 0) < 320 || (meta.height || 0) < 180) continue;
+      let jpeg = await sharp(raw)
+        .rotate()
+        .resize(480, 480, { fit: "cover", position: "centre" })
+        .jpeg({ quality: 75, progressive: false, chromaSubsampling: "4:2:0" })
+        .toBuffer();
+      // WhatsApp drops the chat card when the thumbnail is large.
+      if (jpeg.length > 60_000) {
+        jpeg = await sharp(jpeg)
+          .resize(320, 320, { fit: "inside" })
+          .jpeg({ quality: 60, progressive: false, chromaSubsampling: "4:2:0" })
+          .toBuffer();
+      }
+      return jpeg;
+    } catch (err) {
+      console.warn("⚠️  cover fetch failed:", err.message);
+    }
+  }
+  return null;
 }
 
 async function bufferToWhatsAppAudio(buffer, extHint = "m4a", meta = {}) {
@@ -197,24 +268,145 @@ async function bufferToWhatsAppAudio(buffer, extHint = "m4a", meta = {}) {
   }
 }
 
-async function cookieArgs() {
+function jsonCookiesToNetscape(text) {
+  let data;
+  try {
+    data = JSON.parse(text);
+  } catch {
+    return "";
+  }
+  const list = Array.isArray(data) ? data : data.cookies || data.cookie;
+  if (!Array.isArray(list)) return "";
+  const lines = ["# Netscape HTTP Cookie File"];
+  for (const cookie of list) {
+    const name = cookie?.name || cookie?.key;
+    if (!name || cookie.value == null) continue;
+    let domain = String(cookie.domain || ".youtube.com");
+    if (!domain.startsWith(".") && !cookie.hostOnly) domain = `.${domain}`;
+    const includeSub = domain.startsWith(".") ? "TRUE" : "FALSE";
+    const secure = cookie.secure ? "TRUE" : "FALSE";
+    const exp = Math.floor(Number(cookie.expirationDate || cookie.expires || cookie.expiry || 0)) || 0;
+    const prefix = cookie.httpOnly ? "#HttpOnly_" : "";
+    const value = String(cookie.value).replace(/[\r\n\t]/g, "");
+    lines.push(`${prefix}${domain}\t${includeSub}\t${cookie.path || "/"}\t${secure}\t${exp}\t${name}\t${value}`);
+  }
+  return lines.length > 1 ? `${lines.join("\n")}\n` : "";
+}
+
+function headerCookiesToNetscape(text) {
+  const body = text.replace(/^cookie:\s*/i, "").trim();
+  if (!body || body.includes("\t") || body.includes("\n") || !body.includes("=")) return "";
+  const lines = ["# Netscape HTTP Cookie File"];
+  for (const part of body.split(";")) {
+    const piece = part.trim();
+    const eq = piece.indexOf("=");
+    if (eq <= 0) continue;
+    const name = piece.slice(0, eq).trim();
+    const value = piece.slice(eq + 1).trim().replace(/[\r\n\t]/g, "");
+    if (!name || !value) continue;
+    lines.push(`.youtube.com\tTRUE\t/\tTRUE\t0\t${name}\t${value}`);
+  }
+  return lines.length > 1 ? `${lines.join("\n")}\n` : "";
+}
+
+function normalizeCookieExport(raw) {
+  let text = String(raw || "").replace(/^\uFEFF/, "").trim();
+  if (
+    (text.startsWith('"') && text.endsWith('"')) ||
+    (text.startsWith("'") && text.endsWith("'"))
+  ) {
+    text = text.slice(1, -1).trim();
+  }
+  text = text.replace(/\\r\\n/g, "\n").replace(/\\n/g, "\n").replace(/\\t/g, "\t").replace(/\r\n/g, "\n").trim();
+  const compact = text.replace(/\s+/g, "");
+  if (
+    !text.includes("\n") &&
+    !text.includes("\t") &&
+    compact.length > 40 &&
+    /^[A-Za-z0-9+/=]+$/.test(compact)
+  ) {
+    try {
+      const decoded = Buffer.from(compact, "base64").toString("utf8").trim();
+      if (/youtube|Netscape|\t|LOGIN_INFO|SID/i.test(decoded)) text = decoded;
+    } catch {
+      // keep the original text
+    }
+  }
+  const trimmed = text.trim();
+  if (trimmed.startsWith("[") || trimmed.startsWith("{")) {
+    const converted = jsonCookiesToNetscape(trimmed);
+    if (converted) return converted;
+  }
+  if (!trimmed.includes("\t") && trimmed.includes("=") && trimmed.includes(";")) {
+    const converted = headerCookiesToNetscape(trimmed);
+    if (converted) return converted;
+  }
+  if (!trimmed.startsWith("#")) text = `# Netscape HTTP Cookie File\n${trimmed}`;
+  if (!text.endsWith("\n")) text += "\n";
+  return text;
+}
+
+function countYoutubeCookies(text) {
+  return String(text || "")
+    .split("\n")
+    .filter((line) => {
+      if (!line || line.startsWith("# ")) return false;
+      const domain = line.replace(/^#HttpOnly_/, "").split("\t")[0] || "";
+      return /youtube\.com|google\.com/i.test(domain) && line.split("\t").length >= 7;
+    }).length;
+}
+
+async function ensureCookieText() {
   const cookieFile = process.env.YT_COOKIES_FILE;
   const raw = process.env.YT_COOKIES;
-  if (!cookieFile && !raw) return [];
-  if (!cookieFilePromise) {
-    cookieFilePromise = (async () => {
-      const dest = path.join(os.tmpdir(), "nyxius-yt-cookies.txt");
-      if (cookieFile) {
-        await fs.copyFile(cookieFile, dest);
-        await fs.chmod(dest, 0o600);
-      } else {
-        const text = raw.includes("\\n") ? raw.replace(/\\n/g, "\n") : raw;
-        await fs.writeFile(dest, text.endsWith("\n") ? text : `${text}\n`, { mode: 0o600 });
+  if (!cookieFile && !raw) return "";
+  if (!cookieTextPromise) {
+    cookieTextPromise = (async () => {
+      const source = cookieFile ? await fs.readFile(cookieFile, "utf8") : raw;
+      const text = normalizeCookieExport(source);
+      const count = countYoutubeCookies(text);
+      if (!count) {
+        console.warn(
+          "⚠️  YT_COOKIES is set but no YouTube cookies could be parsed. Use a Netscape cookies.txt, JSON export, or its base64.",
+        );
+        return "";
       }
-      return dest;
-    })();
+      console.log(`🍪 yt cookies ready (${count})`);
+      return text;
+    })().catch((err) => {
+      cookieTextPromise = null;
+      throw err;
+    });
   }
-  return ["--cookies", await cookieFilePromise];
+  return cookieTextPromise;
+}
+
+async function cookieArgs() {
+  const text = await ensureCookieText();
+  if (!text) return [];
+  // Fresh file per yt-dlp run. yt-dlp rewrites the cookie file, and a shared
+  // one gets corrupted when two downloads overlap — then later plays fail.
+  const dest = path.join(os.tmpdir(), `nyxius-ytc-${randomUUID()}.txt`);
+  await fs.writeFile(dest, text, { mode: 0o600 });
+  return ["--cookies", dest];
+}
+
+async function releaseCookies(args = []) {
+  const index = args.indexOf("--cookies");
+  if (index < 0) return;
+  const file = args[index + 1];
+  if (typeof file === "string" && file.includes("nyxius-ytc-")) {
+    await fs.unlink(file).catch(() => {});
+  }
+}
+
+function ytStderr(err) {
+  return String(err?.stderr || err?.message || "")
+    .split("\n")
+    .map((line) => line.trim())
+    .filter((line) => line && !line.startsWith("WARNING"))
+    .slice(-4)
+    .join(" | ");
 }
 
 function parseJson(stdout) {
@@ -244,17 +436,20 @@ function pickEntry(info) {
   return info;
 }
 
-async function ytCommon(extra = [], playerClients = "android,ios,web_safari,tv") {
+async function ytCommon(extra = [], playerClients = DEFAULT_CLIENTS) {
+  const cookies = await cookieArgs();
+  let clients = playerClients;
+  if (cookies.length) {
+    clients = !playerClients || playerClients === DEFAULT_CLIENTS ? COOKIE_CLIENTS : playerClients;
+  }
   return [
     "--no-warnings",
     "--no-progress",
     "--no-check-certificates",
-    ...(playerClients
-      ? ["--extractor-args", `youtube:player_client=${playerClients}`]
-      : []),
+    ...(clients ? ["--extractor-args", `youtube:player_client=${clients}`] : []),
     "--js-runtimes",
     "node",
-    ...(await cookieArgs()),
+    ...cookies,
     ...extra,
   ];
 }
@@ -487,28 +682,29 @@ async function searchMirrors(query, limit) {
 async function searchYtDlp(query, limit) {
   const bin = await ensureYtDlp();
   const fetchCount = Math.max(12, limit * 3);
-  const metaRaw = await runYtDlp(
-    bin,
-    [
-      `ytsearch${fetchCount}:${query}`,
-      "--dump-single-json",
-      "--skip-download",
-      "--playlist-end",
-      String(fetchCount),
-      "--ignore-errors",
-      "--no-abort-on-error",
-      ...(await ytCommon()),
-    ],
-    { timeout: 120_000, maxBuffer: 20 * 1024 * 1024 },
-  );
-  const info = parseJson(metaRaw.stdout);
-  const entries = Array.isArray(info?.entries) ? info.entries : [info];
-  const tracks = uniqueTracks(
-    entries.map((entry) => trackFromEntry(entry, query)),
-    limit,
-  );
-  if (!tracks.length) throw new Error("not_found");
-  return tracks;
+  const args = [
+    `ytsearch${fetchCount}:${query}`,
+    "--dump-single-json",
+    "--skip-download",
+    "--playlist-end",
+    String(fetchCount),
+    "--ignore-errors",
+    "--no-abort-on-error",
+    ...(await ytCommon()),
+  ];
+  try {
+    const metaRaw = await runYtDlp(bin, args, { timeout: 120_000, maxBuffer: 20 * 1024 * 1024 });
+    const info = parseJson(metaRaw.stdout);
+    const entries = Array.isArray(info?.entries) ? info.entries : [info];
+    const tracks = uniqueTracks(
+      entries.map((entry) => trackFromEntry(entry, query)),
+      limit,
+    );
+    if (!tracks.length) throw new Error("not_found");
+    return tracks;
+  } finally {
+    await releaseCookies(args);
+  }
 }
 
 export async function searchYoutubeTracks(query, limit = 5) {
@@ -605,8 +801,8 @@ async function downloadUrl(url, headers = {}) {
   return buffer;
 }
 
-function audioResult({ buffer, mimetype, title, artist, duration, url }) {
-  return { buffer, mimetype, title, artist, duration, url };
+function audioResult({ buffer, mimetype, title, artist, duration, url, cover = null }) {
+  return { buffer, mimetype, title, artist, duration, url, cover };
 }
 
 async function downloadViaInnertube(videoId, fallback) {
@@ -627,16 +823,19 @@ async function downloadViaInnertube(videoId, fallback) {
   const details = data.videoDetails || {};
   const duration = Number(details.lengthSeconds || fallback.duration || 0);
   if (duration > MAX_DURATION) throw new Error("too_long");
+  const coverPromise = fetchCoverJpeg(videoId);
   const raw = await downloadUrl(format.url, {
     "User-Agent": `com.google.android.youtube/${ANDROID_CLIENT.clientVersion} (Linux; U; Android 15) gzip`,
   });
   const ext = /webm|opus/i.test(String(format.mimeType || "")) ? "webm" : "m4a";
   const title = details.title || fallback.title;
   const artist = details.author || fallback.artist;
+  const cover = await coverPromise;
   const fixed = await bufferToWhatsAppAudio(raw, ext, {
     title,
     artist,
     album: artist || "Nyxius",
+    cover,
   });
   return audioResult({
     buffer: fixed.buffer,
@@ -645,117 +844,135 @@ async function downloadViaInnertube(videoId, fallback) {
     artist,
     duration,
     url: `https://www.youtube.com/watch?v=${videoId}`,
+    cover,
   });
 }
 
-async function downloadViaYtDlp(query, known = {}) {
+async function downloadViaYtDlp(query, known = {}, clientsOverride) {
   const bin = await ensureYtDlp();
   const ffmpeg = await ensureFfmpeg().catch(() => null);
   const id = randomUUID();
   const outTemplate = path.join(os.tmpdir(), `nyxius-play-${id}.%(ext)s`);
-  const common = await ytCommon([
-    "--no-playlist",
-    ...(ffmpeg ? ["--ffmpeg-location", ffmpeg] : []),
-  ], null);
+  let common = [];
   const webpageUrl = isYoutubeUrl(query) ? query.trim() : null;
+  const coverPromise = fetchCoverJpeg(videoIdFromUrl(webpageUrl || known.url || known.id));
 
   let title = known.title || "";
   let artist = known.artist || "";
   let duration = Number(known.duration || 0);
   let target = webpageUrl;
+  let filePath = "";
 
-  if (!webpageUrl) {
-    target = `ytsearch1:${query}`;
-    console.log(`🎧 yt-dlp fetch ${target}`);
-    const metaRaw = await runYtDlp(
-      bin,
-      [target, "--dump-single-json", "--skip-download", ...common],
-      { timeout: 90_000, maxBuffer: 20 * 1024 * 1024 },
-    );
-    const entry = pickEntry(parseJson(metaRaw.stdout));
-    duration = Number(entry?.duration || 0);
-    title = entry?.track || entry?.title || query;
-    artist = entry?.artist || entry?.creator || entry?.uploader || "";
-    target = entry?.webpage_url || entry?.url;
-    if (!target) throw new Error("not_found");
-  } else {
-    console.log(`🎧 yt-dlp fetch ${target}`);
-  }
-
-  if (duration > MAX_DURATION) throw new Error("too_long");
-
-  const args = [
-    target,
-    "-o",
-    outTemplate,
-    "--max-filesize",
-    "15m",
-    "-f",
-    "bestaudio/best/18",
-    "--print",
-    "after_move:%(duration)s\t%(artist,creator,uploader|)s\t%(track,title)s",
-    "--no-simulate",
-    ...common,
-  ];
-  if (!duration) {
-    args.push("--match-filter", `duration <= ${MAX_DURATION}`);
-  }
-
-  let stdout = "";
-  const result = await execFileAsync(bin, args, {
-    timeout: 180_000,
-    maxBuffer: 20 * 1024 * 1024,
-    windowsHide: true,
-  });
-  stdout = String(result.stdout || "");
-  console.log("🎧 yt-dlp downloaded");
-
-  const printLine = stdout
-    .split("\n")
-    .map((line) => line.trim())
-    .find((line) => /^\d+\t/.test(line));
-  if (printLine) {
-    const [dur, art, ttl] = printLine.split("\t");
-    if (!duration) duration = Number(dur || 0);
-    if (!artist) artist = art || "";
-    if (!title) title = ttl || target;
-  }
-  if (duration > MAX_DURATION) throw new Error("too_long");
-
-  const files = await fs.readdir(os.tmpdir());
-  const match = files.find((name) => name.startsWith(`nyxius-play-${id}.`));
-  if (!match) throw new Error("download_failed");
-  const filePath = path.join(os.tmpdir(), match);
-  const stat = await fs.stat(filePath);
-  if (stat.size > MAX_SIZE_BYTES) {
-    await fs.unlink(filePath).catch(() => {});
-    throw new Error("too_large");
-  }
-  const finalTitle = title || target;
-  let buffer;
-  let mimetype;
   try {
-    const fixed = await remuxForWhatsApp(filePath, {
+    common = await ytCommon(
+      ["--no-playlist", ...(ffmpeg ? ["--ffmpeg-location", ffmpeg] : [])],
+      clientsOverride == null ? null : clientsOverride,
+    );
+
+    if (!webpageUrl) {
+      target = `ytsearch1:${query}`;
+      console.log(`🎧 yt-dlp fetch ${target}`);
+      const metaRaw = await runYtDlp(
+        bin,
+        [target, "--dump-single-json", "--skip-download", ...common],
+        { timeout: 90_000, maxBuffer: 20 * 1024 * 1024 },
+      );
+      const entry = pickEntry(parseJson(metaRaw.stdout));
+      duration = Number(entry?.duration || 0);
+      title = entry?.track || entry?.title || query;
+      artist = entry?.artist || entry?.creator || entry?.uploader || "";
+      target = entry?.webpage_url || entry?.url;
+      if (!target) throw new Error("not_found");
+    } else {
+      console.log(`🎧 yt-dlp fetch ${target}`);
+    }
+
+    if (duration > MAX_DURATION) throw new Error("too_long");
+
+    const args = [
+      target,
+      "-o",
+      outTemplate,
+      "--max-filesize",
+      "15m",
+      "-f",
+      "bestaudio/best/18",
+      "--print",
+      "after_move:%(duration)s\t%(artist,creator,uploader|)s\t%(track,title)s",
+      "--no-simulate",
+      ...common,
+    ];
+    if (!duration) {
+      args.push("--match-filter", `duration <= ${MAX_DURATION}`);
+    }
+
+    let stdout = "";
+    try {
+      const result = await execFileAsync(bin, args, {
+        timeout: 180_000,
+        maxBuffer: 20 * 1024 * 1024,
+        windowsHide: true,
+      });
+      stdout = String(result.stdout || "");
+    } catch (err) {
+      const detail = ytStderr(err);
+      if (detail) console.warn("⚠️  yt-dlp:", detail);
+      err.stderr = err.stderr || detail;
+      throw err;
+    }
+    console.log("🎧 yt-dlp downloaded");
+
+    const printLine = stdout
+      .split("\n")
+      .map((line) => line.trim())
+      .find((line) => /^\d+\t/.test(line));
+    if (printLine) {
+      const [dur, art, ttl] = printLine.split("\t");
+      if (!duration) duration = Number(dur || 0);
+      if (!artist) artist = art || "";
+      if (!title) title = ttl || target;
+    }
+    if (duration > MAX_DURATION) throw new Error("too_long");
+
+    const files = await fs.readdir(os.tmpdir());
+    const match = files.find((name) => name.startsWith(`nyxius-play-${id}.`));
+    if (!match) throw new Error("download_failed");
+    filePath = path.join(os.tmpdir(), match);
+    const stat = await fs.stat(filePath);
+    if (stat.size > MAX_SIZE_BYTES) throw new Error("too_large");
+    const finalTitle = title || target;
+    let cover = await coverPromise;
+    if (!cover) cover = await fetchCoverJpeg(videoIdFromUrl(target));
+    let buffer;
+    let mimetype;
+    try {
+      const fixed = await remuxForWhatsApp(filePath, {
+        title: finalTitle,
+        artist,
+        album: artist || "Nyxius",
+        cover,
+      });
+      buffer = fixed.buffer;
+      mimetype = fixed.mimetype;
+    } catch (err) {
+      console.warn("⚠️  mp3 encode failed, sending raw:", err.message);
+      buffer = await fs.readFile(filePath);
+      mimetype = mimetypeFrom(match);
+      cover = null;
+    }
+    return audioResult({
+      buffer,
+      mimetype,
       title: finalTitle,
       artist,
-      album: artist || "Nyxius",
+      duration,
+      url: webpageUrl || target,
+      cover,
     });
-    buffer = fixed.buffer;
-    mimetype = fixed.mimetype;
-  } catch (err) {
-    console.warn("⚠️  mp3 encode failed, sending raw:", err.message);
-    buffer = await fs.readFile(filePath);
-    mimetype = mimetypeFrom(match);
+  } finally {
+    await releaseCookies(common);
+    if (filePath) await fs.unlink(filePath).catch(() => {});
   }
-  await fs.unlink(filePath).catch(() => {});
-  return audioResult({
-    buffer,
-    mimetype,
-    title: finalTitle,
-    artist,
-    duration,
-    url: webpageUrl || target,
-  });
 }
 
 async function firstResolved(promises) {
@@ -796,15 +1013,25 @@ export async function downloadYoutubeAudio(query, known = null) {
   }
 
   const videoId = videoIdFromUrl(url);
-  const cookies = await cookieArgs();
+  const hasCookies = Boolean(await ensureCookieText());
 
   try {
-    if (cookies.length) {
+    if (hasCookies) {
       try {
         return await downloadViaYtDlp(url, fallback);
       } catch (err) {
-        if (/too_long|too_large|not_found/.test(err?.message || "") || !videoId) throw err;
-        console.warn("⚠️  yt-dlp failed; trying YouTube player fallback:", err.message);
+        if (/too_long|too_large|not_found/.test(err?.message || "")) throw err;
+        if (isYoutubeBotBlock(err)) {
+          console.warn("⚠️  yt-dlp cookie client blocked; retrying mweb");
+          try {
+            return await downloadViaYtDlp(url, fallback, "mweb,web");
+          } catch (retryErr) {
+            console.warn("⚠️  yt-dlp cookie retry failed:", ytStderr(retryErr) || retryErr.message);
+            err = retryErr;
+          }
+        }
+        if (!videoId) throw err;
+        console.warn("⚠️  yt-dlp failed; trying YouTube player fallback:", ytStderr(err) || err.message);
         try {
           const audio = await downloadViaInnertube(videoId, fallback);
           console.log("🎧 innertube player audio fallback");

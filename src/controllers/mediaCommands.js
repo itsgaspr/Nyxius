@@ -76,20 +76,39 @@ async function sendPlayAudio(sock, ctx, query, known = null) {
 
   // WhatsApp native player (in-chat). Download name will still be AUD-... — that
   // rename is forced by WhatsApp for audioMessage; only documents keep a custom name.
-  // MP3 + ID3 tags keep artist/title inside the file for music apps.
-  await sendQuoted(
-    sock,
-    jid,
-    {
-      audio: audio.buffer,
-      mimetype: "audio/mpeg",
-      ptt: false,
-      seconds: Number(audio.duration) || undefined,
-      fileName: playFileName(label, "mp3"),
-    },
-    message,
-    "play-audio",
-  );
+  // The MP3 carries ID3 artist/title plus the cover. The card shows that cover in chat.
+  const sourceUrl = /^https?:\/\//.test(audio.url || "") ? audio.url : undefined;
+  const videoId = String(audio.url || "").match(/(?:youtu\.be\/|v=|shorts\/|embed\/)([\w-]{11})/)?.[1];
+  const thumbnailUrl = videoId ? `https://i.ytimg.com/vi/${videoId}/hqdefault.jpg` : undefined;
+  const payload = {
+    audio: audio.buffer,
+    mimetype: "audio/mpeg",
+    ptt: false,
+    seconds: Number(audio.duration) || undefined,
+    fileName: playFileName(label, "mp3"),
+  };
+  if (audio.cover) {
+    payload.contextInfo = {
+      externalAdReply: {
+        title: title.slice(0, 80),
+        body: (artist || "Nyxius").slice(0, 80),
+        mediaType: 1,
+        thumbnail: audio.cover,
+        ...(thumbnailUrl ? { thumbnailUrl } : {}),
+        ...(sourceUrl ? { sourceUrl } : {}),
+        renderLargerThumbnail: true,
+        showAdAttribution: false,
+      },
+    };
+  }
+  try {
+    await sendQuoted(sock, jid, payload, message, "play-audio");
+  } catch (err) {
+    if (!audio.cover) throw err;
+    console.warn("⚠️  play cover card failed, sending audio only:", err.message);
+    delete payload.contextInfo;
+    await sendQuoted(sock, jid, payload, message, "play-audio");
+  }
   await reactTo(sock, message, OK_EMOJI);
 }
 

@@ -245,7 +245,7 @@ You MUST include these facts, formatted prettily (labels in *bold*):
 • *designation* — NX-01
 • *creator* — g a s p r .
 • *version* — include the current version from your identity
-• *what I do* — moderation, games (trivia, hangman, tic-tac-toe, truth or dare), YouTube audio (.play), SFW Pinterest (.pin), AI (.ask)
+• *what I do* — moderation, games (trivia, hangman, tic-tac-toe, truth or dare), SFW Pinterest (.pin), AI (.ask)
 End with a short line inviting *.help* / *.ajuda*.
 Keep it complete but not long.`
     : `Explain clearly: ${topic}

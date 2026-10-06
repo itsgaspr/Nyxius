@@ -31,7 +31,7 @@ import {
 } from "./adminCommands.js";
 import { handleAfkCommand, maybeClearAfk, enforceAfkMentions } from "./afkController.js";
 import { enforceAntiMedia } from "./antiMediaController.js";
-import { handlePlayCommand, handlePlayPick, handlePinCommand } from "./mediaCommands.js";
+import { handlePinCommand } from "./mediaCommands.js";
 import { handleForcaCommand, handleHangmanGuess } from "../games/hangman.js";
 import { handleTttCommand, handleTttReply } from "../games/tictactoe.js";
 import { handleTodCommand, handleTodReply } from "../games/truthordare.js";
@@ -113,8 +113,6 @@ export async function handleMessage(sock, message) {
     const triviaHandled = await handleTriviaReply(sock, message, ctx);
     if (triviaHandled && !parsed) return;
 
-    if (await handlePlayPick(sock, ctx)) return;
-
     if (!triviaHandled && (await handleHangmanGuess(sock, ctx))) return;
 
     if (await handleTttReply(sock, ctx)) return;
@@ -159,7 +157,6 @@ export async function handleMessage(sock, message) {
       forca: () => handleForcaCommand(sock, ctx),
       ttt: () => handleTttCommand(sock, ctx),
       td: () => handleTodCommand(sock, ctx),
-      play: () => handlePlayCommand(sock, ctx),
       pin: () => handlePinCommand(sock, ctx),
       ask: () => handleAsk(ctx),
     };

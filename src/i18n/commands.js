@@ -214,14 +214,6 @@ export const COMMANDS = {
     },
     usage: { pt: ".td @usuario", en: ".td @user" },
   },
-  play: {
-    category: "midia",
-    aliases: ["play", "pl", "tocar", "musica", "yt"],
-    primary: { pt: "tocar", en: "play" },
-    abbr: ["pl", "yt"],
-    desc: { pt: "YouTube 1-5", en: "YouTube 1-5" },
-    usage: { pt: ".tocar <nome>", en: ".play <name>" },
-  },
   pin: {
     category: "midia",
     aliases: ["pin", "pn", "pinterest"],
@@ -290,7 +282,6 @@ const CMD_EMOJI = {
   forca: "🪢",
   ttt: "⭕",
   td: "🎲",
-  play: "🎵",
   pin: "📌",
   ask: "💭",
   afk: "💤",

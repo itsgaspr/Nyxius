@@ -32,10 +32,11 @@ const WEB_CLIENT = {
   gl: "US",
 };
 
-// As of 2026-10, android still returns a playable format. tv and web_safari
-// answer with the bot check, and browser cookies make that check worse.
-const DEFAULT_CLIENTS = "android";
-const ANON_CLIENTS = "android,mweb";
+// android and mweb get the datacenter bot check. These two still return a
+// format without cookies or a proof-of-origin token.
+const DEFAULT_CLIENTS = "android_vr";
+const ANON_CLIENTS = "android_vr";
+const EMBED_CLIENTS = "web_embedded";
 const COOKIE_CLIENTS = "web_safari";
 const TV_CLIENT = {
   clientName: "TVHTML5",
@@ -1035,18 +1036,31 @@ export async function downloadYoutubeAudio(query, known = null) {
   try {
     let lastErr;
     try {
-      // Android, without the saved browser cookies. Those cookies are tied to
-      // another IP and the web clients that accept them are the ones getting blocked.
+      // Quest and embedded players. The phone and mobile-web clients are the
+      // ones Render's IP gets challenged on, and saved cookies make that worse.
       const audio = await downloadViaYtDlp(url, fallback, {
         clients: ANON_CLIENTS,
         useCookies: false,
       });
-      console.log("🎧 yt-dlp audio (android)");
+      console.log("🎧 yt-dlp audio (android_vr)");
       return audio;
     } catch (err) {
       if (permanent(err)) throw err;
       lastErr = err;
-      console.warn("⚠️  yt-dlp android failed:", ytStderr(err) || err.message);
+      console.warn("⚠️  yt-dlp android_vr failed:", ytStderr(err) || err.message);
+    }
+
+    try {
+      const audio = await downloadViaYtDlp(url, fallback, {
+        clients: EMBED_CLIENTS,
+        useCookies: false,
+      });
+      console.log("🎧 yt-dlp audio (web_embedded)");
+      return audio;
+    } catch (err) {
+      if (permanent(err)) throw err;
+      console.warn("⚠️  yt-dlp web_embedded failed:", ytStderr(err) || err.message);
+      if (isYoutubeBotBlock(err)) lastErr = err;
     }
 
     if (hasCookies) {

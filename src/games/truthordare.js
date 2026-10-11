@@ -116,15 +116,26 @@ function say(sock, ctx, content, label = "tod") {
   return sendQuoted(sock, ctx.jid, content, ctx.message, label, 20_000);
 }
 
-export function normalizeTodLevel(argText) {
-  const raw = (argText || "")
+function plain(argText) {
+  return (argText || "")
     .trim()
     .toLowerCase()
     .normalize("NFD")
     .replace(/\p{Diacritic}/gu, "");
+}
+
+export function normalizeTodLevel(argText) {
+  const raw = plain(argText);
   if (["leve", "light", "easy", "soft", "facil"].includes(raw)) return "leve";
   if (["medio", "medium", "mid", "normal"].includes(raw)) return "medio";
   if (["profundo", "deep", "hard", "intense"].includes(raw)) return "profundo";
+  return null;
+}
+
+export function normalizeTodSource(argText) {
+  const raw = plain(argText);
+  if (["human", "humano", "pessoas", "people"].includes(raw)) return "human";
+  if (["ia", "ai", "bot"].includes(raw)) return "ia";
   return null;
 }
 
@@ -134,11 +145,21 @@ function resolveLevel(settings) {
   return "leve";
 }
 
+function resolveSource(settings) {
+  return settings?.todSource === "human" ? "human" : "ia";
+}
+
 export function labelTodLevel(level, lang) {
   if (lang === "en") {
     return { leve: "light", medio: "medium", profundo: "deep" }[level] || level;
   }
   return level;
+}
+
+export function labelTodSource(source, lang) {
+  const human = source === "human";
+  if (lang === "en") return human ? "human" : "ai";
+  return human ? "pessoas" : "ia";
 }
 
 function pickFallback(lang, level, kind) {
@@ -186,6 +207,25 @@ async function deliverPrompt(sock, ctx, challenge, kind) {
   );
 }
 
+async function deliverHumanChoice(sock, ctx, challenge, kind) {
+  const { jid, t } = ctx;
+  pending.delete(jid);
+  const choice = kind === "truth" ? t("tod_choice_truth") : t("tod_choice_dare");
+  return say(
+    sock,
+    ctx,
+    {
+      text: t("tod_human_pick", {
+        me: extractNumber(challenge.challenger),
+        opp: extractNumber(challenge.target),
+        choice,
+      }),
+      mentions: [challenge.challenger, challenge.target],
+    },
+    "tod-human",
+  );
+}
+
 async function acceptChoice(sock, ctx, kind) {
   const { jid, senderId, t } = ctx;
   const challenge = pending.get(jid);
@@ -197,6 +237,7 @@ async function acceptChoice(sock, ctx, kind) {
     pending.delete(jid);
     return say(sock, ctx, { text: t("tod_expired") });
   }
+  if (challenge.source === "human") return deliverHumanChoice(sock, ctx, challenge, kind);
   return deliverPrompt(sock, ctx, challenge, kind);
 }
 
@@ -234,8 +275,15 @@ export async function handleTodCommand(sock, ctx) {
   }
 
   if (!target) {
-    const level = resolveLevel(settings || (await getSettings(jid)));
-    return say(sock, ctx, { text: t("tod_usage", { level: labelTodLevel(level, ctx.lang) }) });
+    const current = settings || (await getSettings(jid));
+    const level = resolveLevel(current);
+    const source = resolveSource(current);
+    return say(sock, ctx, {
+      text: t("tod_usage", {
+        level: labelTodLevel(level, ctx.lang),
+        source: labelTodSource(source, ctx.lang),
+      }),
+    });
   }
 
   if (sameUser(target, senderId)) {
@@ -248,22 +296,29 @@ export async function handleTodCommand(sock, ctx) {
     return say(sock, ctx, { text: t("tod_busy") });
   }
 
-  const level = resolveLevel(settings || (await getSettings(jid)));
+  const current = settings || (await getSettings(jid));
+  const level = resolveLevel(current);
+  const source = resolveSource(current);
   pending.set(jid, {
     challenger: senderId,
     target,
     level,
+    source,
     expires: Date.now() + CHOICE_MS,
   });
 
   const meNum = extractNumber(senderId);
   const oppNum = extractNumber(target);
+  const text =
+    source === "human"
+      ? t("tod_challenge_human", { me: meNum, opp: oppNum })
+      : t("tod_challenge", {
+          me: meNum,
+          opp: oppNum,
+          level: labelTodLevel(level, ctx.lang),
+        });
   return say(sock, ctx, {
-    text: t("tod_challenge", {
-      me: meNum,
-      opp: oppNum,
-      level: labelTodLevel(level, ctx.lang),
-    }),
+    text,
     mentions: [senderId, target],
   });
 }

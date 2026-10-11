@@ -13,6 +13,7 @@ const DEFAULT_SETTINGS = {
   lang: "pt",
   triviaMode: "normal",
   todLevel: "leve",
+  todSource: "ia",
 };
 
 const settingsCache = new Map();

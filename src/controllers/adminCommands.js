@@ -12,7 +12,12 @@ import { extractNumber, findParticipant, sameUser } from "../utils/jid.js";
 import { normalizeLang, makeT } from "../i18n/index.js";
 import { sendQuoted } from "../utils/feedback.js";
 import { getContextInfo, getQuotedKey } from "../utils/message.js";
-import { normalizeTodLevel, labelTodLevel } from "../games/truthordare.js";
+import {
+  normalizeTodLevel,
+  normalizeTodSource,
+  labelTodLevel,
+  labelTodSource,
+} from "../games/truthordare.js";
 
 function say(sock, ctx, content) {
   return sendQuoted(sock, ctx.jid, content, ctx.message, "admin", 20_000);
@@ -286,10 +291,21 @@ export async function handleSettdCommand(sock, ctx) {
     settings.todLevel === "medio" || settings.todLevel === "profundo"
       ? settings.todLevel
       : "leve";
+  const source = settings.todSource === "human" ? "human" : "ia";
+  const nextSource = normalizeTodSource(ctx.argText);
+  if (nextSource) {
+    await updateSettings(jid, { todSource: nextSource });
+    return say(sock, ctx, {
+      text: t("settd_source", { source: labelTodSource(nextSource, lang) }),
+    });
+  }
   const next = normalizeTodLevel(ctx.argText);
   if (!next) {
     return say(sock, ctx, {
-      text: `${t("settd_usage")}\n${t("settd_set", { level: labelTodLevel(current, lang) })}`,
+      text: `${t("settd_usage")}\n${t("settd_status", {
+        level: labelTodLevel(current, lang),
+        source: labelTodSource(source, lang),
+      })}`,
     });
   }
   await updateSettings(jid, { todLevel: next });

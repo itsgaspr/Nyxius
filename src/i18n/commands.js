@@ -152,10 +152,10 @@ export const COMMANDS = {
     primary: { pt: "settd", en: "settd" },
     abbr: ["settd"],
     desc: {
-      pt: "Quão ousado é o ToD: leve|medio|profundo",
-      en: "How spicy is ToD: light|medium|deep",
+      pt: "Intensidade ou quem pergunta: ia|pessoas",
+      en: "Intensity, or who asks: ai|human",
     },
-    usage: { pt: ".settd leve|medio|profundo", en: ".settd light|medium|deep" },
+    usage: { pt: ".settd ia|pessoas", en: ".settd ai|human" },
   },
   info: {
     category: "util",

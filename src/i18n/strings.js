@@ -93,7 +93,7 @@ export const STRINGS = {
     ttt_win: "🏆 @{user} venceu! Respeito.\n\n{board}",
     ttt_turn: "{board}\n\nVez de @{turn} — manda *1* … *9*.",
     tod_usage:
-      "Manda `.td @alguém`\nIntensidade: *{level}*\nAdmin: `.settd leve|medio|profundo`",
+      "Manda `.td @alguém`\nIntensidade: *{level}* · origem: *{source}*\nAdmin: `.settd ia|pessoas` ou `.settd leve|medio|profundo`",
     tod_self: "🪞 Desafiar a ti mesmo? Esperto… mas não.",
     tod_bot: "😎 Eu passo. Desafia um humano!",
     tod_busy: "🎲 Já tem um ToD à espera. `.td parar` pra cancelar.",
@@ -104,11 +104,18 @@ export const STRINGS = {
     tod_expired: "⏰ Expirou. Alguém manda `.td @pessoa` outra vez!",
     tod_challenge:
       "🎲 *VERDADE OU CONSEQUÊNCIA* · {level}\n@{me} apontou o dedo a @{opp}!\n\n@{opp}, responde *V* (verdade) ou *D* (consequência).",
+    tod_challenge_human:
+      "🎲 *VERDADE OU CONSEQUÊNCIA*\n@{me} apontou o dedo a @{opp}!\n\n@{opp}, responde *V* (verdade) ou *D* (consequência).",
+    tod_choice_truth: "verdade",
+    tod_choice_dare: "consequência",
+    tod_human_pick: "@{me}, @{opp} escolheu *{choice}*.\nAgora pergunta o que quiseres.",
     tod_truth_title: "🫢 *VERDADE* · {level}",
     tod_dare_title: "🎭 *CONSEQUÊNCIA* · {level}",
     tod_prompt: "{title}\n@{user}, é a tua vez!\n\n{prompt}",
-    settd_usage: "Escolhe: `.settd leve` | `.settd medio` | `.settd profundo`",
+    settd_usage: "`.settd ia` ou `.settd pessoas`\nIntensidade (só na ia): `.settd leve|medio|profundo`",
+    settd_status: "🎚️ ToD: intensidade *{level}*, origem *{source}*.",
     settd_set: "🎚️ ToD agora em modo *{level}*. Divirtam-se (com cuidado).",
+    settd_source: "🎚️ ToD agora vem de *{source}*.",
     trivia_right: "🏆🤪 *@{user} cravou!*\n✅ *{answer}*: {option}",
     trivia_wrong: "🙈 *@{user}* quase… mas não.\n*{pick}*: {option} — tenta outra!",
     trivia_wrong_reveal:
@@ -302,7 +309,7 @@ export const STRINGS = {
     ttt_win: "🏆 @{user} wins! Respect.\n\n{board}",
     ttt_turn: "{board}\n\n@{turn}'s turn — send *1* … *9*.",
     tod_usage:
-      "Send `.td @someone`\nIntensity: *{level}*\nAdmin: `.settd light|medium|deep`",
+      "Send `.td @someone`\nIntensity: *{level}* · source: *{source}*\nAdmin: `.settd ai|human` or `.settd light|medium|deep`",
     tod_self: "🪞 Challenge yourself? Clever… still no.",
     tod_bot: "😎 I'll pass. Challenge a human!",
     tod_busy: "🎲 A ToD is already waiting. `.td stop` to cancel.",
@@ -313,11 +320,18 @@ export const STRINGS = {
     tod_expired: "⏰ Expired. Someone send `.td @person` again!",
     tod_challenge:
       "🎲 *TRUTH OR DARE* · {level}\n@{me} pointed at @{opp}!\n\n@{opp}, reply *T* (truth) or *D* (dare).",
+    tod_challenge_human:
+      "🎲 *TRUTH OR DARE*\n@{me} pointed at @{opp}!\n\n@{opp}, reply *T* (truth) or *D* (dare).",
+    tod_choice_truth: "truth",
+    tod_choice_dare: "dare",
+    tod_human_pick: "@{me}, @{opp} picked *{choice}*.\nAsk whatever you want.",
     tod_truth_title: "🫢 *TRUTH* · {level}",
     tod_dare_title: "🎭 *DARE* · {level}",
     tod_prompt: "{title}\n@{user}, you're up!\n\n{prompt}",
-    settd_usage: "Pick: `.settd light` | `.settd medium` | `.settd deep`",
+    settd_usage: "`.settd ai` or `.settd human`\nIntensity (AI only): `.settd light|medium|deep`",
+    settd_status: "🎚️ ToD: intensity *{level}*, source *{source}*.",
     settd_set: "🎚️ ToD is now *{level}*. Have fun (responsibly).",
+    settd_source: "🎚️ ToD now comes from *{source}*.",
     trivia_right: "🏆🤪 *@{user} nailed it!*\n✅ *{answer}*: {option}",
     trivia_wrong: "🙈 *@{user}* close… but no.\n*{pick}*: {option} — try another!",
     trivia_wrong_reveal:

@@ -66,16 +66,11 @@ export async function maybeClearAfk(sock, ctx) {
 }
 
 export async function enforceAfkMentions(sock, ctx) {
-  const { jid, message, senderId, mentioned, quoted, t, isBotAdmin } = ctx;
+  const { jid, message, senderId, mentioned, quoted, t } = ctx;
   const targets = [...(mentioned || [])];
   if (quoted) targets.push(quoted);
   const hits = listAfkHits(jid, targets).filter((hit) => !sameUser(hit.jid, senderId));
   if (!hits.length) return false;
-  if (isBotAdmin) {
-    await sock.sendMessage(jid, { delete: message.key }).catch((err) => {
-      console.error("afk delete error:", err.message);
-    });
-  }
   const lines = hits.map((hit) => t("afk_blocked_line", { user: hit.user, reason: hit.reason }));
   await sendQuoted(
     sock,
@@ -85,9 +80,9 @@ export async function enforceAfkMentions(sock, ctx) {
       mentions: hits.map((hit) => hit.jid),
     },
     message,
-    "afk-block",
+    "afk-notice",
     12_000,
   ).catch(() => {});
-  console.log(`💤 afk mention blocked from ${extractNumber(senderId)} → ${hits.map((h) => h.user).join(",")}`);
-  return true;
+  console.log(`💤 afk mention from ${extractNumber(senderId)} → ${hits.map((h) => h.user).join(",")}`);
+  return false;
 }

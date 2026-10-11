@@ -270,10 +270,15 @@ function normalizeTriviaMode(argText) {
   return null;
 }
 
+function labelTriviaMode(mode, lang) {
+  if (mode === "fun") return lang === "en" ? "fun" : "divertido";
+  return "normal";
+}
+
 export async function handleSetmodeCommand(sock, ctx) {
-  const { jid, t } = ctx;
+  const { jid, t, lang } = ctx;
   const settings = await getSettings(jid);
-  const current = settings.triviaMode === "fun" ? "fun" : "normal";
+  const current = labelTriviaMode(settings.triviaMode === "fun" ? "fun" : "normal", lang);
   const next = normalizeTriviaMode(ctx.argText);
   if (!next) {
     return say(sock, ctx, {
@@ -281,7 +286,7 @@ export async function handleSetmodeCommand(sock, ctx) {
     });
   }
   await updateSettings(jid, { triviaMode: next });
-  return say(sock, ctx, { text: t("setmode_set", { mode: next }) });
+  return say(sock, ctx, { text: t("setmode_set", { mode: labelTriviaMode(next, lang) }) });
 }
 
 export async function handleSettdCommand(sock, ctx) {

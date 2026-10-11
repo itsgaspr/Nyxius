@@ -80,7 +80,7 @@ export const COMMANDS = {
     primary: { pt: "antilink", en: "antilink" },
     abbr: ["al"],
     desc: { pt: "Links? Por aqui não", en: "Links? Not in here" },
-    usage: { pt: ".antilink on/off", en: ".antilink on/off" },
+    usage: { pt: ".antilink liga/desliga", en: ".antilink on/off" },
   },
   antispam: {
     category: "admin",
@@ -89,7 +89,7 @@ export const COMMANDS = {
     primary: { pt: "antispam", en: "antispam" },
     abbr: ["as"],
     desc: { pt: "Para o flood", en: "Stops the flood" },
-    usage: { pt: ".antispam on/off", en: ".antispam on/off" },
+    usage: { pt: ".antispam liga/desliga", en: ".antispam on/off" },
   },
   antimedia: {
     category: "admin",
@@ -98,7 +98,7 @@ export const COMMANDS = {
     primary: { pt: "antimedia", en: "antimedia" },
     abbr: ["am"],
     desc: { pt: "Mídia some; fotos view-once", en: "Media vanishes; photos view-once" },
-    usage: { pt: ".antimedia on/off", en: ".antimedia on/off" },
+    usage: { pt: ".antimedia liga/desliga", en: ".antimedia on/off" },
   },
   welcome: {
     category: "admin",
@@ -107,7 +107,7 @@ export const COMMANDS = {
     primary: { pt: "boasvindas", en: "welcome" },
     abbr: ["wel", "bv"],
     desc: { pt: "Liga/desliga o oi aos novos", en: "Toggle the hello for newbies" },
-    usage: { pt: ".boasvindas on/off", en: ".welcome on/off" },
+    usage: { pt: ".boasvindas liga/desliga", en: ".welcome on/off" },
   },
   setwelcome: {
     category: "admin",
@@ -143,7 +143,7 @@ export const COMMANDS = {
     primary: { pt: "setmode", en: "setmode" },
     abbr: ["mode"],
     desc: { pt: "Trivia séria ou caos divertido", en: "Serious trivia or fun chaos" },
-    usage: { pt: ".setmode normal|fun", en: ".setmode normal|fun" },
+    usage: { pt: ".setmode normal|divertido", en: ".setmode normal|fun" },
   },
   settd: {
     category: "admin",
@@ -255,7 +255,7 @@ export const COMMANDS = {
     primary: { pt: "adeus", en: "goodbye" },
     abbr: ["bye"],
     desc: { pt: "Liga/desliga o tchau de quem sai", en: "Toggle the goodbye for leavers" },
-    usage: { pt: ".adeus on/off", en: ".goodbye on/off" },
+    usage: { pt: ".adeus liga/desliga", en: ".goodbye on/off" },
   },
   setgoodbye: {
     category: "admin",
@@ -270,10 +270,10 @@ export const COMMANDS = {
     category: "admin",
     adminOnly: true,
     aliases: ["todos", "tagall", "marcar", "everyone"],
-    primary: { pt: "todos", en: "todos" },
+    primary: { pt: "todos", en: "tagall" },
     abbr: ["tagall"],
     desc: { pt: "Menciona o grupo inteiro", en: "Mention the whole group" },
-    usage: { pt: ".todos <texto>", en: ".todos <text>" },
+    usage: { pt: ".todos <texto>", en: ".tagall <text>" },
   },
   link: {
     category: "admin",

@@ -29,10 +29,20 @@ import {
   handleSettdCommand,
   handleAntimediaCommand,
   handleDelCommand,
+  handleGoodbyeCommand,
+  handleSetGoodbyeCommand,
+  handleTodosCommand,
+  handleLinkCommand,
+  handleRevokeCommand,
+  handleRulesCommand,
+  handleSetRulesCommand,
+  handleReportCommand,
 } from "./adminCommands.js";
 import { handleAfkCommand, maybeClearAfk, enforceAfkMentions } from "./afkController.js";
 import { enforceAntiMedia } from "./antiMediaController.js";
 import { handlePinCommand } from "./mediaCommands.js";
+import { handleReactionCommand } from "./reactionCommands.js";
+import { REACTIONS } from "../data/reactions.js";
 import { handleForcaCommand, handleHangmanGuess } from "../games/hangman.js";
 import { handleTttCommand, handleTttReply } from "../games/tictactoe.js";
 import { handleTodCommand, handleTodReply } from "../games/truthordare.js";
@@ -161,7 +171,19 @@ export async function handleMessage(sock, message) {
       td: () => handleTodCommand(sock, ctx),
       pin: () => handlePinCommand(sock, ctx),
       ask: () => handleAsk(ctx),
+      goodbye: () => handleGoodbyeCommand(sock, ctx),
+      setgoodbye: () => handleSetGoodbyeCommand(sock, ctx),
+      todos: () => handleTodosCommand(sock, ctx),
+      link: () => handleLinkCommand(sock, ctx),
+      revoke: () => handleRevokeCommand(sock, ctx),
+      rules: () => handleRulesCommand(sock, ctx),
+      setrules: () => handleSetRulesCommand(sock, ctx),
+      report: () => handleReportCommand(sock, ctx),
     };
+
+    for (const reaction of REACTIONS) {
+      handlers[reaction.id] = () => handleReactionCommand(sock, ctx, reaction.id);
+    }
 
     try {
       await withTyping(sock, jid, () => handlers[cmdId]());
@@ -291,17 +313,18 @@ async function handleHelp(ctx) {
 
   for (const [id, meta] of Object.entries(COMMANDS)) {
     if (meta.adminOnly && !privileged) continue;
+    if (meta.helpHide) continue;
     const cat = meta.category || "util";
     if (!grouped[cat]) grouped[cat] = [];
     grouped[cat].push(formatCommandHelp(id, lang));
   }
 
-  const order = ["admin", "jogos", "midia", "util"];
+  const order = ["admin", "jogos", "reacoes", "midia", "util"];
   const blocks = order
-    .filter((key) => grouped[key]?.length)
+    .filter((key) => key === "reacoes" || grouped[key]?.length)
     .map((key) => {
       const header = t("help_cat_open", { cat: t(`cat_${key}`) });
-      const body = grouped[key].join("\n│\n");
+      const body = key === "reacoes" ? t("react_help") : grouped[key].join("\n│\n");
       return `${header}\n${body}\n${t("help_cat_close")}`;
     });
 

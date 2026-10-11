@@ -1,3 +1,5 @@
+import { REACTIONS } from "../data/reactions.js";
+
 export const COMMANDS = {
   kick: {
     category: "admin",
@@ -246,7 +248,92 @@ export const COMMANDS = {
     desc: { pt: "Apaga a mensagem respondida", en: "Delete the replied message" },
     usage: { pt: ".apagar", en: ".del" },
   },
+  goodbye: {
+    category: "admin",
+    adminOnly: true,
+    aliases: ["goodbye", "adeus", "bye", "despedida"],
+    primary: { pt: "adeus", en: "goodbye" },
+    abbr: ["bye"],
+    desc: { pt: "Liga/desliga o tchau de quem sai", en: "Toggle the goodbye for leavers" },
+    usage: { pt: ".adeus on/off", en: ".goodbye on/off" },
+  },
+  setgoodbye: {
+    category: "admin",
+    adminOnly: true,
+    aliases: ["setgoodbye", "setadeus", "sgb"],
+    primary: { pt: "setadeus", en: "setgoodbye" },
+    abbr: ["sgb"],
+    desc: { pt: "Escreve o tchau", en: "Write the goodbye line" },
+    usage: { pt: ".setadeus {user} {group}", en: ".setgoodbye {user} {group}" },
+  },
+  todos: {
+    category: "admin",
+    adminOnly: true,
+    aliases: ["todos", "tagall", "marcar", "everyone"],
+    primary: { pt: "todos", en: "todos" },
+    abbr: ["tagall"],
+    desc: { pt: "Menciona o grupo inteiro", en: "Mention the whole group" },
+    usage: { pt: ".todos <texto>", en: ".todos <text>" },
+  },
+  link: {
+    category: "admin",
+    adminOnly: true,
+    aliases: ["link", "convite", "invite"],
+    primary: { pt: "link", en: "link" },
+    abbr: ["convite"],
+    desc: { pt: "Mostra o convite do grupo", en: "Show the group invite" },
+    usage: { pt: ".link", en: ".link" },
+  },
+  revoke: {
+    category: "admin",
+    adminOnly: true,
+    aliases: ["revogar", "revoke", "resetlink"],
+    primary: { pt: "revogar", en: "revoke" },
+    abbr: ["revoke"],
+    desc: { pt: "Invalida o convite e gera outro", en: "Revoke the invite and mint a new one" },
+    usage: { pt: ".revogar", en: ".revoke" },
+  },
+  rules: {
+    category: "util",
+    aliases: ["regras", "rules"],
+    primary: { pt: "regras", en: "rules" },
+    abbr: ["rules"],
+    desc: { pt: "As regras do grupo", en: "The group rules" },
+    usage: { pt: ".regras", en: ".rules" },
+  },
+  setrules: {
+    category: "admin",
+    adminOnly: true,
+    aliases: ["setregras", "setrules"],
+    primary: { pt: "setregras", en: "setrules" },
+    abbr: ["setrules"],
+    desc: { pt: "Grava as regras do grupo", en: "Save the group rules" },
+    usage: { pt: ".setregras <texto>", en: ".setrules <text>" },
+  },
+  report: {
+    category: "util",
+    aliases: ["denunciar", "denuncia", "denúncia", "report"],
+    primary: { pt: "denunciar", en: "report" },
+    abbr: ["report"],
+    desc: { pt: "Avisa os admins sobre uma mensagem", en: "Flag a message for the admins" },
+    usage: { pt: ".denunciar", en: ".report" },
+  },
 };
+
+for (const reaction of REACTIONS) {
+  COMMANDS[reaction.id] = {
+    category: "reacoes",
+    helpHide: true,
+    aliases: reaction.aliases,
+    primary: reaction.primary,
+    abbr: [],
+    desc: { pt: "Figurinha de reação", en: "Reaction sticker" },
+    usage: {
+      pt: `.${reaction.primary.pt}`,
+      en: `.${reaction.primary.en}`,
+    },
+  };
+}
 
 const ALIAS_TO_ID = new Map();
 for (const [id, meta] of Object.entries(COMMANDS)) {
@@ -289,6 +376,14 @@ const CMD_EMOJI = {
   info: "ℹ️",
   botinfo: "🤖",
   help: "📖",
+  goodbye: "🚶",
+  setgoodbye: "📝",
+  todos: "📣",
+  link: "🔗",
+  revoke: "♻️",
+  rules: "📏",
+  setrules: "✏️",
+  report: "🚨",
 };
 
 export function formatCommandHelp(id, lang) {

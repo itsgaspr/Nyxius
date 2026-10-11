@@ -11,7 +11,7 @@ import {
 import { extractNumber, findParticipant, sameUser } from "../utils/jid.js";
 import { normalizeLang, makeT } from "../i18n/index.js";
 import { sendQuoted } from "../utils/feedback.js";
-import { getQuotedKey } from "../utils/message.js";
+import { getContextInfo, getQuotedKey } from "../utils/message.js";
 import { normalizeTodLevel, labelTodLevel } from "../games/truthordare.js";
 
 function say(sock, ctx, content) {
@@ -294,4 +294,196 @@ export async function handleSettdCommand(sock, ctx) {
   }
   await updateSettings(jid, { todLevel: next });
   return say(sock, ctx, { text: t("settd_set", { level: labelTodLevel(next, lang) }) });
+}
+
+export async function handleGoodbyeCommand(sock, ctx) {
+  const { jid, argText, t } = ctx;
+  const parsed = parseToggle(argText);
+  if (parsed === null) {
+    const settings = await getSettings(jid);
+    const state = settings.goodbyeEnabled ? t("on") : t("off");
+    return say(sock, ctx, { text: t("goodbye_status", { state }) });
+  }
+  await updateSettings(jid, { goodbyeEnabled: parsed });
+  return say(sock, ctx, { text: t("goodbye_set", { state: parsed ? t("on") : t("off") }) });
+}
+
+export async function handleSetGoodbyeCommand(sock, ctx) {
+  const { jid, argText, t } = ctx;
+  if (!argText?.trim()) {
+    return say(sock, ctx, { text: t("setgoodbye_usage") });
+  }
+  await updateSettings(jid, {
+    goodbyeText: argText.trim(),
+    goodbyeEnabled: true,
+  });
+  return say(sock, ctx, { text: t("setgoodbye_ok") });
+}
+
+function memberIds(ctx) {
+  const skip = [ctx.botJid, ctx.sock.user?.id, ctx.sock.user?.lid];
+  return ctx.participants
+    .map((participant) => participant.id)
+    .filter((id) => id && !skip.some((candidate) => candidate && sameUser(id, candidate)));
+}
+
+export async function handleTodosCommand(sock, ctx) {
+  const { jid, message, argText, t } = ctx;
+  const ids = memberIds(ctx);
+  if (!ids.length) {
+    return say(sock, ctx, { text: t("todos_none") });
+  }
+
+  const headline = (argText || "").trim().slice(0, 400) || t("todos_default");
+  const chunk = 40;
+  try {
+    for (let index = 0; index < ids.length; index += chunk) {
+      const slice = ids.slice(index, index + chunk);
+      const line = slice.map((id) => `@${extractNumber(id)}`).join(" ");
+      const text = index === 0 ? `${headline}\n\n${line}` : line;
+      await sendQuoted(
+        sock,
+        jid,
+        { text, mentions: slice },
+        index === 0 ? message : null,
+        "todos",
+        20_000,
+      );
+    }
+  } catch (err) {
+    console.error("todos error:", err.message);
+    return say(sock, ctx, { text: t("todos_fail") });
+  }
+}
+
+function inviteUrl(code) {
+  const clean = typeof code === "string" ? code.trim() : "";
+  if (!/^[A-Za-z0-9_-]{6,64}$/.test(clean)) return null;
+  return `https://chat.whatsapp.com/${clean}`;
+}
+
+async function readInvite(sock, jid) {
+  const code = await sock.groupInviteCode(jid);
+  return inviteUrl(code);
+}
+
+export async function handleLinkCommand(sock, ctx) {
+  const { jid, isBotAdmin, isOwner, t } = ctx;
+  if (!isBotAdmin && !isOwner) {
+    return say(sock, ctx, { text: t("need_admin") });
+  }
+  try {
+    const url = await readInvite(sock, jid);
+    if (!url) return say(sock, ctx, { text: t("link_fail") });
+    return say(sock, ctx, { text: t("link_ok", { url }) });
+  } catch (err) {
+    console.error("link error:", err.message);
+    return say(sock, ctx, { text: t("link_fail") });
+  }
+}
+
+export async function handleRevokeCommand(sock, ctx) {
+  const { jid, isBotAdmin, isOwner, senderId, t } = ctx;
+  if (!isBotAdmin && !isOwner) {
+    return say(sock, ctx, { text: t("need_admin") });
+  }
+  try {
+    const fresh = inviteUrl(await sock.groupRevokeInvite(jid)) || (await readInvite(sock, jid));
+    if (!fresh) return say(sock, ctx, { text: t("revoke_fail") });
+    await addLog({ groupJid: jid, action: "revoke", actor: senderId });
+    return say(sock, ctx, { text: t("revoke_ok", { url: fresh }) });
+  } catch (err) {
+    console.error("revoke error:", err.message);
+    return say(sock, ctx, { text: t("revoke_fail") });
+  }
+}
+
+const RULES_MAX = 1500;
+
+export async function handleRulesCommand(sock, ctx) {
+  const { jid, t } = ctx;
+  const settings = await getSettings(jid);
+  const text = (settings.rulesText || "").trim();
+  if (!text) return say(sock, ctx, { text: t("rules_empty") });
+  return say(sock, ctx, { text: `${t("rules_title")}\n\n${text}` });
+}
+
+export async function handleSetRulesCommand(sock, ctx) {
+  const { jid, argText, t } = ctx;
+  const text = (argText || "").trim();
+  if (!text) return say(sock, ctx, { text: t("setrules_usage") });
+  if (text.length > RULES_MAX) return say(sock, ctx, { text: t("setrules_long") });
+  await updateSettings(jid, { rulesText: text });
+  return say(sock, ctx, { text: t("setrules_ok") });
+}
+
+function uniqueIds(ids) {
+  const seen = new Set();
+  const out = [];
+  for (const id of ids) {
+    const number = extractNumber(id);
+    if (!id || !number || seen.has(number)) continue;
+    seen.add(number);
+    out.push(id);
+  }
+  return out;
+}
+
+export async function handleReportCommand(sock, ctx) {
+  const { jid, message, senderId, participants, argText, t } = ctx;
+  const quotedKey = getQuotedKey(message, sock);
+  if (!quotedKey?.participant) {
+    return say(sock, ctx, { text: t("report_usage") });
+  }
+
+  const reason = (argText || "")
+    .split(/\s+/)
+    .filter((token) => !token.startsWith("@"))
+    .join(" ")
+    .trim();
+  const admins = participants.filter((participant) => participant.admin);
+  const mentions = uniqueIds([
+    senderId,
+    quotedKey.participant,
+    ...admins.map((participant) => participant.id),
+  ]);
+  const adminLine = admins
+    .map((participant) => `@${extractNumber(participant.id)}`)
+    .filter(Boolean)
+    .join(" ");
+  const text = [
+    t("report_notice", {
+      reporter: extractNumber(senderId),
+      target: extractNumber(quotedKey.participant) || "?",
+      reason: reason ? t("reason_line", { reason }) : "",
+    }),
+    adminLine,
+  ]
+    .filter(Boolean)
+    .join("\n");
+
+  const context = getContextInfo(message);
+  const quoted = context.quotedMessage
+    ? { key: quotedKey, message: context.quotedMessage }
+    : message;
+
+  try {
+    await sendQuoted(sock, jid, { text, mentions }, quoted, "report", 20_000);
+  } catch (err) {
+    console.error("report quote error:", err.message);
+    try {
+      await sendQuoted(sock, jid, { text, mentions }, message, "report", 20_000);
+    } catch (sendErr) {
+      console.error("report error:", sendErr.message);
+      return say(sock, ctx, { text: t("report_fail") });
+    }
+  }
+
+  await addLog({
+    groupJid: jid,
+    action: "report",
+    actor: senderId,
+    target: quotedKey.participant,
+    reason: reason || null,
+  });
 }

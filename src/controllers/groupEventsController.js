@@ -8,23 +8,29 @@ export async function handleGroupParticipantsUpdate(sock, update) {
   if (!jid?.endsWith("@g.us")) return;
   invalidateGroupMeta(jid);
 
-  if (update.action !== "add") return;
+  const leaving = update.action === "remove" || update.action === "leave";
+  const joining = update.action === "add";
+  if (!joining && !leaving) return;
 
   const settings = await getSettings(jid);
-  if (!settings.welcomeEnabled) return;
+  if (joining && !settings.welcomeEnabled) return;
+  if (leaving && !settings.goodbyeEnabled) return;
 
   let groupMeta;
   try {
     groupMeta = await getGroupMeta(sock, jid);
   } catch (err) {
-    console.error("welcome metadata error:", err);
+    console.error("group event metadata error:", err);
     return;
   }
 
   const botId = sock.user?.id;
   const botLid = sock.user?.lid;
   const t = makeT(settings.lang === "en" ? "en" : "pt");
-  const template = settings.welcomeText || t("default_welcome");
+  const template = leaving
+    ? settings.goodbyeText || t("default_goodbye")
+    : settings.welcomeText || t("default_welcome");
+  const label = leaving ? "goodbye" : "welcome";
 
   console.log(`👥 ${update.action} in ${jid}:`, (update.participants || []).map((p) => toJid(p)));
 
@@ -41,9 +47,9 @@ export async function handleGroupParticipantsUpdate(sock, update) {
         text,
         mentions: [mention],
       });
-      console.log(`👋 welcome sent → ${mention}`);
+      console.log(`${leaving ? "🚶" : "👋"} ${label} sent → ${mention}`);
     } catch (err) {
-      console.error("welcome send error:", err);
+      console.error(`${label} send error:`, err);
     }
   }
 }
